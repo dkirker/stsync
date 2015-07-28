@@ -13,8 +13,7 @@
 # Copy these into your ~/.stsync and edit
 USERNAME=""
 PASSWORD=""
-CLEAN_SOURCE="src/"
-RAW_SOURCE="${CLEAN_SOURCE}/raw/"
+SOURCE=""
 
 USERAGENT="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/43.0.2357.134 Safari/537.36"
 HEADERS=/tmp/headers.txt
@@ -64,6 +63,8 @@ function usage() {
 	echo "  -p        = Publish changes (can be combined with -u)"
 	echo "  -f <file> = Make -u & -p only work on <file>"
 	echo "  -h        = This help"
+	echo "  -q        = Quiet (less output)"
+	echo "  -l        = Always login"
 	echo ""
 	exit 0
 }
@@ -131,6 +132,7 @@ function checkDiff() {
 		SHA=( $(shasum "${CLEAN_SOURCE}/$1/${INFO[1]}") )
 
 		if [ "${SELECTED}" == "" -o "${SELECTED}" == "${INFO[1]}" ]; then
+			ERROR=0
 			I=$((${I} + 1))
 			DIFF=""
 			if [ "${INFO[3]}" == "UNPUBLISHED" ]; then
@@ -162,29 +164,34 @@ function checkDiff() {
 				fi
 				if grep '{"errors":\["' /tmp/post_result 2>/dev/null 1>/dev/null ; then
 					echo "ERROR: Upload failed due to compilation errors..."
-					cat /tmp/post_result
+					cat /tmp/post_result | ${TOOL_JSONDEC} errors
 					echo "(Sorry, better parsing is yet to come)"
-					exit 255
+					ERROR=1
+				else
+					SHA=$(shasum "${CLEAN_SOURCE}/$1/${INFO[1]}")
+					SHA="${SHA:0:40}"
+					echo "${INFO[0]} ${INFO[1]} ${SHA} UNPUBLISHED" > "${FILE}"
+					C=$((${C} - 1))
+					U=$((${C} - 1))
+					DIFF="U-"
+					echo "OK"
 				fi
-				SHA=$(shasum "${CLEAN_SOURCE}/$1/${INFO[1]}")
-				SHA="${SHA:0:40}"
-				echo "${INFO[0]} ${INFO[1]} ${SHA} UNPUBLISHED" > "${FILE}"
-				C=$((${C} - 1))
-				U=$((${C} - 1))
-				DIFF="U-"
-				echo "OK"
 			fi
 			if [ $PUBLISH -gt 0 -a "${DIFF:0:1}" == "U" ]; then
-				echo -n "     Publishing... "
-				curl -s -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" -X POST -d "id=${ID}&scope=me" "https://graph.api.smartthings.com/ide/$1/publishAjax" > /tmp/post_result
-				if grep "${LOGIN_NEEDED}" "${HEADERS}" >/dev/null ; then
-					echo "ERROR: Failed to push changes, login timed out. Try again"
-					rm /tmp/login_ok
-					exit 255
+				if [ $ERROR -gt 0 ]; then
+					echo "     NOT publishing since you had an error"
+				else
+					echo -n "     Publishing... "
+					curl -s -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" -X POST -d "id=${ID}&scope=me" "https://graph.api.smartthings.com/ide/$1/publishAjax" > /tmp/post_result
+					if grep "${LOGIN_NEEDED}" "${HEADERS}" >/dev/null ; then
+						echo "ERROR: Failed to push changes, login timed out. Try again"
+						rm /tmp/login_ok
+						exit 255
+					fi
+					echo "${INFO[0]} ${INFO[1]} ${SHA}" > "${FILE}"
+					echo "OK"
+					U=$((${U} - 1))
 				fi
-				echo "${INFO[0]} ${INFO[1]} ${SHA}" > "${FILE}"
-				echo "OK"
-				U=$((${U} - 1))
 			fi
 		fi
 	done
@@ -198,10 +205,11 @@ MODE=diff
 PUBLISH=0
 UPLOAD=0
 SELECTED=
+QUIET=0
 
 # Parse options
 #
-while getopts sSdhpuf: opt
+while getopts sSdhpulqf: opt
 do
    	case "$opt" in
 	   	s) MODE=sync;;
@@ -209,14 +217,18 @@ do
 		p) PUBLISH=1;;
 		u) UPLOAD=1;;
 		f) SELECTED="$(basename "$OPTARG")";;
+		q) QUIET=1;;
+		l) rm /tmp/login_ok 2>/dev/null 1>/dev/null ;;
 		h) usage;;
 	esac
 done
 
-echo ""
-echo "SmartThings WebIDE Sync (beta)"
-echo "=============================="
-echo ""
+if [ $QUIET -eq 0 ]; then
+	echo ""
+	echo "SmartThings WebIDE Sync (beta)"
+	echo "=============================="
+	echo ""
+fi
 
 # Load user settings
 #
@@ -224,10 +236,28 @@ if [ -f ~/.stsync ]; then
 	source ~/.stsync
 fi
 
+eval CLEAN_SOURCE="${SOURCE}"
+RAW_SOURCE="${CLEAN_SOURCE}/raw/"
+
 # Sanity testing
 #
 if [ "${USERNAME}" == "" -o "${PASSWORD}" == "" ]; then
 	echo "ERROR: No username and/or password. Please create a personal settings file in ~/.stsync"
+	exit 255
+fi
+if [ "${SOURCE}" == "" ]; then
+	echo "ERROR: No source directory specified in ~/.stsync"
+	exit 255
+fi
+
+if [ "${SELECTED: -7}" != ".groovy" -a "${SELECTED}" != "" ]; then
+	if [ $QUIET -eq 0 ]; then
+		echo "ERROR: You cannot select a non-groovy file"
+		exit 255
+	else
+		# Special case, hide errors from caller
+		exit 0
+	fi
 fi
 
 # Get the path of ourselves (need for symlinks)
@@ -244,7 +274,9 @@ if [ ! -f /tmp/login_ok ]; then
 		echo "ERROR: Login failed, check username/password"
 		exit 255
 	fi
-	echo "Login successful and cached"
+	if [ $QUIET -eq 0 ]; then
+		echo "Login successful and cached"
+	fi
 	touch /tmp/login_ok
 fi
 
@@ -272,19 +304,23 @@ if [ "${MODE}" == "diff" ]; then
 		exit 255
 	fi
 
-	if [ "${SELECTED}" != "" ]; then
-		echo "Checking ${CLEAN_SOURCE} for any changes to ${SELECTED}:"
-	else
-		echo "Checking ${CLEAN_SOURCE} for any changes:"
+	if [ $QUIET -eq 0 ]; then
+		if [ "${SELECTED}" != "" ]; then
+			echo "Checking ${CLEAN_SOURCE} for any changes to ${SELECTED}:"
+		else
+			echo "Checking ${CLEAN_SOURCE} for any changes:"
+		fi
+		echo ""
 	fi
-	echo ""
 	I=0
 	C=0
 	U=0
 
 	checkDiff app
 	checkDiff device
-	echo ""
-	echo "Checked ${I} files, ${U} unpublished, ${C} changed locally"
+	if [ $QUIET -eq 0 ]; then
+		echo ""
+		echo "Checked ${I} files, ${U} unpublished, ${C} changed locally"
+	fi
 fi
 
