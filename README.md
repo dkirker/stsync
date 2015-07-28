@@ -66,5 +66,12 @@ Shows all available options
 ## Automatic mode
 It's possible to set it up so any changes are automatically processed. Simply call ./stwatch.sh instead. Please note that it only supports -u & -p options. Please note that on start, it will LIST all files and any pending operations, BUT IT WILL NOT EXECUTE THEM. This is just to make sure you know what state you're in.
 
+## Git support
+By default, when creating a repo, the script will also place a .gitignore file in the source folder to allow you to use git for source code tracking. It automatically
+ignores the raw/ directory which holds sync data. It may be a bit odd way of doing it, but it removes a lot of "crud" which you would be tracking as well which strictly speaking isn't needed.
+
+### Restoring when using git
+First, git clone your source directory. Next you run ./stsync.sh with -S (yes, it will overwrite, which is fine). Next you issue "git checkout -- ." in the source directory, this will remove all the changes caused by the overwrite. Now you're good to go.
+
 ## Limitations
 Only runs on OSX for now, once you've downloaded the repository, you should avoid doing changes from the WebIDE since there is no sync from web other than overwrite. 
