@@ -10,8 +10,8 @@ SOURCE=
 
 function usage() {
 	echo ""
-	echo "Sync Watcher (beta) - henric@smartthings.com"
-	echo "============================================"
+	echo "SmartThanks Watch (beta) - henric@smartthings.com"
+	echo "================================================="
 	echo "Companion script for stsync.sh which monitors the source directory and automatically"
 	echo "performs uploads and publishing"
 	echo ""
@@ -35,8 +35,8 @@ do
 done
 
 echo ""
-echo "Sync Watcher (beta)"
-echo "==================="
+echo "SmartThings Watch (beta)"
+echo "========================"
 echo ""
 
 # Load user settings
