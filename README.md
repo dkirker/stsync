@@ -26,9 +26,11 @@ Once all tools are installed, please create a new file in your home
 directory called ".stsync". In this file you need to add the following
 three lines:
 
+```
 USERNAME=<email address used for the smartthings.com WebIDE>
 PASSWORD=<associated password for the account>
 SOURCE=<a path for a directory to use for all the source>
+```
 
 Once you've done this, you're ready to go. 
 
