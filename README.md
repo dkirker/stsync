@@ -68,9 +68,3 @@ It's possible to set it up so any changes are automatically processed. Simply ca
 
 ## Limitations
 Only runs on OSX for now, once you've downloaded the repository, you should avoid doing changes from the WebIDE since there is no sync from web other than overwrite. 
-
-
-
-
-
-
