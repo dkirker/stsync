@@ -6,7 +6,7 @@ use JSON;
 use AnyEvent::WebSocket::Client;
 use POSIX qw(strftime);
 
-if ($#ARGV != 0) {
+if ($#ARGV != 1) {
 	die("Cannot be used stand-alone $#ARGV");
 }
 
