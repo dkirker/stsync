@@ -58,10 +58,10 @@ function usage() {
 	echo "environment."
 	echo ""
 	echo "  -s        = Start a new repository (essentially downloading your ST apps and device types)"
-	echo "  -S        = Same as -s but WILL overwrite any existing files. Use with care"
+	echo "  -S        = Same as -s but WILL overwrite any existing files. Use with care, you'll lose any changes you've made"
 	echo "  -u        = Upload changes"
 	echo "  -p        = Publish changes (can be combined with -u)"
-	echo "  -f <file> = Make -u & -p only work on <file>"
+	echo "  -f <file> = Make -u & -p apply to <file> ONLY"
 	echo "  -h        = This help"
 	echo "  -q        = Quiet (less output)"
 	echo "  -l        = Always login"
@@ -99,6 +99,11 @@ function download_repo() {
 				fi
 				cat "${RAW_SOURCE}/${TYPE}/${SA_ID}.tmp" | "${TOOL_JSONDEC}" > "${CLEAN_SOURCE}/${TYPE}/${SA_FILE}"
 
+				# Finally, sha1 it, so we can detect diffs.
+				SHA=$(shasum "${CLEAN_SOURCE}/${TYPE}/${SA_FILE}")
+				SHA="${SHA:0:40}"
+				echo "${SA_ID} ${SA_FILE} ${SHA}" > "${RAW_SOURCE}/${TYPE}/${FILE}.map"
+				echo "OK"
 			fi
 		else
 			curl -s -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" "https://graph.api.smartthings.com/ide/device/editor/${FILE}" -o "${RAW_SOURCE}/${TYPE}/${FILE}_translate.html"
@@ -113,13 +118,18 @@ function download_repo() {
 			SA_ID="${SA_ID##\"}"
 			SA_ID="${SA_ID%%\" id=\"id\"}"
 			echo -n "   ${SA_FILE} - "
-			cat "${RAW_SOURCE}/${TYPE}/${FILE}_translate.html" | ${TOOL_EXTRACT}  > "${CLEAN_SOURCE}/${TYPE}/${SA_FILE}"
+			if [ -f "${CLEAN_SOURCE}/${TYPE}/${SA_FILE}" -a ${FORCE} -eq 0 ]; then
+				echo "File exists, skipping (use FORCE to ignore)"
+			else
+				cat "${RAW_SOURCE}/${TYPE}/${FILE}_translate.html" | ${TOOL_EXTRACT}  > "${CLEAN_SOURCE}/${TYPE}/${SA_FILE}"
+
+				# Finally, sha1 it, so we can detect diffs.
+				SHA=$(shasum "${CLEAN_SOURCE}/${TYPE}/${SA_FILE}")
+				SHA="${SHA:0:40}"
+				echo "${SA_ID} ${SA_FILE} ${SHA}" > "${RAW_SOURCE}/${TYPE}/${FILE}.map"
+				echo "OK"
+			fi
 		fi
-		# Finally, sha1 it, so we can detect diffs.
-		SHA=$(shasum "${CLEAN_SOURCE}/${TYPE}/${SA_FILE}")
-		SHA="${SHA:0:40}"
-		echo "${SA_ID} ${SA_FILE} ${SHA}" > "${RAW_SOURCE}/${TYPE}/${FILE}.map"
-		echo "OK"
 
 	done
 }
@@ -165,7 +175,7 @@ function checkDiff() {
 				if grep '{"errors":\["' /tmp/post_result 2>/dev/null 1>/dev/null ; then
 					echo "ERROR: Upload failed due to compilation errors..."
 					cat /tmp/post_result | ${TOOL_JSONDEC} errors
-					echo "(Sorry, better parsing is yet to come)"
+					echo ""
 					ERROR=1
 				else
 					SHA=$(shasum "${CLEAN_SOURCE}/$1/${INFO[1]}")
