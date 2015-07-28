@@ -306,6 +306,10 @@ if [ "${MODE}" == "sync" ]; then
 	download_repo "app" "${IDS}"
 	IDS="$(egrep -o "${DEVICETYPES_LINK}" "${RAW_SOURCE}/device/devicetypes.lst")"
 	download_repo "device" "${IDS}"
+	if [ ! -f "${CLEAN_SOURCE}/.gitignore" ]; then
+		# Create a gitignore in-case the user will use git
+		echo >"${CLEAN_SOURCE}/.gitignore" "raw/"
+	fi
 fi
 
 if [ "${MODE}" == "diff" ]; then
