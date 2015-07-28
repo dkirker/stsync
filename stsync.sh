@@ -37,10 +37,13 @@ SMARTAPPS_DOWNLOAD="https://graph.api.smartthings.com/ide/app/getCodeForResource
 SMARTAPPS_COMPILE="https://graph.api.smartthings.com/ide/app/compile"
 SMARTAPPS_PUBLISH="https://graph.api.smartthings.com/ide/app/publishAjax"
 
+LOGGING_URL="https://graph.api.smartthings.com/ide/logs"
+
 TOOL_JSONDEC="tools/json_decode.pl"
 TOOL_JSONENC="tools/json_encode.pl"
 TOOL_URLENC="tools/url_encode.pl"
 TOOL_EXTRACT="tools/extract_device.pl"
+TOOL_LOGGING="tools/livelogging.pl"
 
 function checkAuthError() {
 	if grep "${LOGIN_NEEDED}" "${HEADERS}" >/dev/null ; then
@@ -65,6 +68,7 @@ function usage() {
 	echo "  -h        = This help"
 	echo "  -q        = Quiet (less output)"
 	echo "  -l        = Always login"
+	echo "  -L        = Live Logging (experimental)"
 	echo ""
 	exit 0
 }
@@ -219,7 +223,7 @@ QUIET=0
 
 # Parse options
 #
-while getopts sSdhpulqf: opt
+while getopts sSdhpulqLf: opt
 do
    	case "$opt" in
 	   	s) MODE=sync;;
@@ -229,6 +233,7 @@ do
 		f) SELECTED="$(basename "$OPTARG")";;
 		q) QUIET=1;;
 		l) rm /tmp/login_ok 2>/dev/null 1>/dev/null ;;
+		L) MODE=logging;;
 		h) usage;;
 	esac
 done
@@ -338,3 +343,13 @@ if [ "${MODE}" == "diff" ]; then
 	fi
 fi
 
+if [ "${MODE}" == "logging" ]; then
+	curl -s -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" ${LOGGING_URL} -o "/tmp/get_data"
+	checkAuthError
+	WEBSOCKET="$(egrep -o "websocket: \'[^\']+" /tmp/get_data)"
+	WEBSOCKET="${WEBSOCKET##websocket: \'}"
+	CLIENT="$(egrep -o "client: \'[^\']+" /tmp/get_data)"
+	CLIENT="${CLIENT##client: \'}"
+
+	${TOOL_LOGGING} "${WEBSOCKET}client/${CLIENT}" "${CLIENT}"
+fi

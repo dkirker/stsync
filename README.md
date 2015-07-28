@@ -16,11 +16,13 @@ a publish (or both, which is probably more useful) of the changed file.
 You'll need the following tools installed on your OSX device (Linux
 support coming soon).
 
-- brew
-- perl
+- brew (install using "ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)")
+- perl (you should have it by default)
 - cpanm (install using "brew install cpanm")
 - json (install using "cpan install JSON")
 - fswatch (install using "brew install fswatch")
+- AnyEvent::WebSocket::Client (install using "cpan install AnyEvent::WebSocket::Client")
+  (only needed if you want livelogging support)
 
 Once all tools are installed, please create a new file in your home
 directory called ".stsync". In this file you need to add the following
@@ -59,6 +61,9 @@ Upload and publish any local changes. If a upload fail due to compile errors, it
 
 ### ./stsync.sh -f
 Adding the -f option and a filename will cause the operations to only affect the file provided. It can be provided with or without path, but it MUST be a groovy file. No wildcards are allowed.
+
+### ./stsync.sh -L
+Live Logging support, prints out the messages in your console.
 
 ### ./stsync.sh -h
 Shows all available options

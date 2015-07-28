@@ -10,13 +10,15 @@ foreach my $line ( <STDIN> ) {
 	$data .= $line;
 }
 
-if ($#ARGV eq 2) {
+if ($#ARGV == 0) {
 	if ($ARGV[0] ne "") {
 		$field = $ARGV[0];
 	}
 }
 
-my $result = decode_json($data)->{ $field };
+my $result;
+
+$result = decode_json($data)->{ $field };
 
 if (ref($result) eq "ARRAY") {
 	printArray($result);
@@ -30,8 +32,7 @@ sub printArray {
 		if (ref($_) eq 'ARRAY') {
 			printArray($_);
 		} else {
-			print $_;
+			print "$_";
 		}
-
 	}
 }
