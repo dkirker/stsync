@@ -20,12 +20,13 @@ my $lasttime = 0;
 
 $ws->on(each_message => sub {
 	my $msg = pop->decoded_body;
-
 	# Ignore register
-	if ($msg =~ "register ") {
+	if (substr($msg, 0, 9) eq "register ") {
 		printf "Live Logging started @ %s\n", (strftime "%a %b %e, %H:%M:%S %Y", localtime);
 		$lasttime = $timestamp = time();
-	} else {
+	} elsif ($msg eq "echo") {
+		printf "----- | ALIVE | %-25.25s | ----- |\n", "KeepAlive Ping-Pong";
+	} elsif (substr($msg, 0, 1) eq "{") {
 		my $t = time();
 		my $delta = $t - $lasttime;
 		my $offset = $t - $timestamp;
@@ -48,10 +49,10 @@ $ws->on(each_message => sub {
 		} else {
 			print $msg . "\n";
 		}
-
 	}
 });
 
+my $timer = AnyEvent->timer(after => 3, interval => 30, cb => sub { $ws->send('ping'); });
 AnyEvent->condvar->recv;
 
 sub printLogArray {
