@@ -36,6 +36,8 @@ $ws->on(each_message => sub {
 			my $prefix = sprintf "%5d | ", $offset;
 			if ($data->{'target'}->{'type'} eq 'InstalledSmartApp') {
 				$prefix .= "  APP | ";
+			} elsif ($data->{'target'}->{'type'} eq 'Device') {
+				$prefix .= "  DEV | ";
 			} else {
 				$prefix .= $data->{'target'}->{'type'};
 			}
