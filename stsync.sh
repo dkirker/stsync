@@ -163,7 +163,13 @@ function checkDiff() {
 				DIFF="${DIFF}-"
 			fi
 
-			echo "  ${DIFF} $1/${INFO[1]}"
+			if [ "${DIFF}" == "--" -a $QUIET -eq 0 ]; then
+				if [ $TIMESTAMP -gt 0 ]; then
+					echo "Sync started $(date):"
+					TIMESTAMP=0
+				fi
+				echo "  ${DIFF} $1/${INFO[1]}"
+			fi
 
 			if [ $UPLOAD -gt 0 -a "${DIFF:1:1}" == "C" ]; then
 				echo -n "     Uploading... "
@@ -275,10 +281,6 @@ if [ "${SELECTED: -7}" != ".groovy" -a "${SELECTED}" != "" ]; then
 		# Special case, hide errors from caller
 		exit 0
 	fi
-fi
-
-if [ $TIMESTAMP -gt 0 ]; then
-	echo "Sync started $(date):"
 fi
 
 # Get the path of ourselves (need for symlinks)

@@ -57,14 +57,23 @@ if [ "$CMDLINE" == "" ] ; then
 	echo ""
 fi
 
-if which fswatch >/dev/null ; then 
+# Test compatibility
+which fswatch >/dev/null ; HAS_FSWATCH=$(( 1 - $? ))
+which inotifywait >/dev/null ; HAS_INOTIFY=$(( 1 - $? ))
+
+if [ $HAS_INOTIFY -gt 0 -o $HAS_FSWATCH -gt 0 ] ; then 
 	echo "Starting watch of ${CLEAN_SOURCE}"
 else
-	echo "ERROR: You must have fswatch installed"
+	echo "ERROR: You must have fswatch (OSX) or inotifywait (Linux/Cygwin) installed"
 	exit 255
 fi
 
 # Get all pending
 bash stsync.sh -ql
 # Monitor
-fswatch -i '.+\.groovy' "${CLEAN_SOURCE}" | xargs -n 1 bash stsync.sh ${CMDLINE} -qlt -f
+MONITOR="fswatch -i '.+\.groovy' \"${CLEAN_SOURCE}\""
+if [ $HAS_INOTIFY -gt 0 ]; then
+	MONITOR="inotifywait -q --format %w%f -me close_write -r"
+fi
+
+${MONITOR} | xargs -n 1 bash stsync.sh ${CMDLINE} -qlt -f
