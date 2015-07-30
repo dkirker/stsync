@@ -67,4 +67,4 @@ fi
 # Get all pending
 bash stsync.sh -ql
 # Monitor
-fswatch -i '.+\.groovy' "${CLEAN_SOURCE}" | xargs -n 1 bash stsync.sh ${CMDLINE} -ql -f
+fswatch -i '.+\.groovy' "${CLEAN_SOURCE}" | xargs -n 1 bash stsync.sh ${CMDLINE} -qlt -f

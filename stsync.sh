@@ -220,12 +220,14 @@ PUBLISH=0
 UPLOAD=0
 SELECTED=
 QUIET=0
+TIMESTAMP=0
 
 # Parse options
 #
-while getopts sSdhpulqLf: opt
+while getopts tsSdhpulqLf: opt
 do
    	case "$opt" in
+   		t) TIMESTAMP=1;;
 	   	s) MODE=sync;;
 		S) MODE=sync ; FORCE=1;;
 		p) PUBLISH=1;;
@@ -273,6 +275,10 @@ if [ "${SELECTED: -7}" != ".groovy" -a "${SELECTED}" != "" ]; then
 		# Special case, hide errors from caller
 		exit 0
 	fi
+fi
+
+if [ $TIMESTAMP -gt 0 ]; then
+	echo "Sync started $(date):"
 fi
 
 # Get the path of ourselves (need for symlinks)
