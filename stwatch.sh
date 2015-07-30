@@ -71,8 +71,8 @@ fi
 # Get all pending
 bash stsync.sh -ql
 # Monitor
-MONITOR="fswatch -i '.+\.groovy' \"${CLEAN_SOURCE}\""
+MONITOR="fswatch -i '.+\.groovy'"
 if [ $HAS_INOTIFY -gt 0 ]; then
-	MONITOR="inotifywait -q --format %w%f -me close_write -r  \"${CLEAN_SOURCE}\""
+	MONITOR="inotifywait -q --format %w%f -me close_write -r"
 fi
-${MONITOR} | xargs -n 1 bash stsync.sh ${CMDLINE} -qlt -f
+${MONITOR} "${CLEAN_SOURCE}" | xargs -n 1 bash stsync.sh ${CMDLINE} -qlt -f

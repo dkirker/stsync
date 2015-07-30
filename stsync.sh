@@ -163,7 +163,7 @@ function checkDiff() {
 				DIFF="${DIFF}-"
 			fi
 
-			if [ "${DIFF}" == "--" -a $QUIET -eq 0 ]; then
+			if [ "${DIFF}" != "--" -o $QUIET -eq 0 ]; then
 				if [ $TIMESTAMP -gt 0 ]; then
 					echo "Sync started $(date):"
 					TIMESTAMP=0
