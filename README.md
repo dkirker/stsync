@@ -13,8 +13,7 @@ a publish (or both, which is probably more useful) of the changed file.
 
 ## Installation
 
-You'll need the following tools installed on your OSX device (Linux
-support coming soon).
+You'll need the following tools installed on your OSX/Linux device (Cygwin in windows "may" work but is untested).
 
 - brew (install using "ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)")
 - perl (you should have it by default)
@@ -79,4 +78,6 @@ ignores the raw/ directory which holds sync data. It may be a bit odd way of doi
 First, git clone your source directory. Next you run ./stsync.sh with -S (yes, it will overwrite, which is fine). Next you issue "git checkout -- ." in the source directory, this will remove all the changes caused by the overwrite. Now you're good to go.
 
 ## Limitations
-Only runs on OSX for now, once you've downloaded the repository, you should avoid doing changes from the WebIDE since there is no sync from web other than overwrite. 
+Only runs on OSX/Linux for now, once you've downloaded the repository, you should avoid doing changes from the WebIDE since there is no sync from web other than overwrite. 
+
+In theory, the scripts should work on Cygwin inside windows as well, but this is not tested.
