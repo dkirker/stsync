@@ -17,6 +17,7 @@ function usage() {
 	echo ""
 	echo "  -u        = Upload changes"
 	echo "  -p        = Publish changes (can be combined with -u)"
+	echo "  -i        = enable include directives (see README.md)"
 	echo "  -h        = This help"
 	echo ""
 	exit 0
@@ -25,11 +26,12 @@ function usage() {
 # Parse options
 #
 CMDLINE=
-while getopts uph opt
+while getopts upih opt
 do
    	case "$opt" in
 		p) CMDLINE="${CMDLINE}-p ";;
 		u) CMDLINE="${CMDLINE}-u ";;
+		i) CMDLINE="${CMDLINE}-i ";;
 		h) usage;;
 	esac
 done

@@ -44,6 +44,7 @@ TOOL_JSONENC="tools/json_encode.pl"
 TOOL_URLENC="tools/url_encode.pl"
 TOOL_EXTRACT="tools/extract_device.pl"
 TOOL_LOGGING="tools/livelogging.pl"
+TOOL_PREPROCESS="tools/preprocessor.pl"
 
 function checkAuthError() {
 	if grep "${LOGIN_NEEDED}" "${HEADERS}" >/dev/null ; then
@@ -69,6 +70,7 @@ function usage() {
 	echo "  -q        = Quiet (less output)"
 	echo "  -l        = Always login"
 	echo "  -L        = Live Logging (experimental)"
+	echo "  -i        = enable include directives (see README.md)"
 	echo ""
 	exit 0
 }
@@ -175,7 +177,12 @@ function checkDiff() {
 				echo -n "     Uploading... "
 				# Build the data to post (it's massive, so temp file!)
 				echo -n > /tmp/postdata "id=${ID}&location=&resource=${INFO[0]}&resourceType=script&code="
-				cat "${CLEAN_SOURCE}/$1/${INFO[1]}" | ${TOOL_URLENC} >> /tmp/postdata
+				if [ $INCLUDES -gt 0 ]; then
+					echo -n "Preprocessing... "
+					cat "${CLEAN_SOURCE}/$1/${INFO[1]}" | ${TOOL_PREPROCESS} "${CLEAN_SOURCE}/$1" | ${TOOL_URLENC} >> /tmp/postdata
+				else
+					cat "${CLEAN_SOURCE}/$1/${INFO[1]}" | ${TOOL_URLENC} >> /tmp/postdata
+				fi
 				curl -s -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" -X POST -d @/tmp/postdata "https://graph.api.smartthings.com/ide/$1/compile" > /tmp/post_result
 				if grep "${LOGIN_NEEDED}" "${HEADERS}" >/dev/null ; then
 					echo "ERROR: Failed to push changes, login timed out. Try again"
@@ -227,10 +234,11 @@ UPLOAD=0
 SELECTED=
 QUIET=0
 TIMESTAMP=0
+INCLUDES=0
 
 # Parse options
 #
-while getopts tsSdhpulqLf: opt
+while getopts tsSidhpulqLf: opt
 do
    	case "$opt" in
    		t) TIMESTAMP=1;;
@@ -242,6 +250,7 @@ do
 		q) QUIET=1;;
 		l) rm /tmp/login_ok 2>/dev/null 1>/dev/null ;;
 		L) MODE=logging;;
+		i) INCLUDES=1;;
 		h) usage;;
 	esac
 done
