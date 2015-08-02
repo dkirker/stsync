@@ -67,8 +67,19 @@ Live Logging support, prints out the messages in your console.
 ### ./stsync.sh -h
 Shows all available options
 
+### ./stsync.sh -i
+Use include directive. This allows you to do local preprocessing before uploading it to the WebIDE. Currently the only supported directive is 
+
+```
+#include "<file>"
+```
+
+This will include any file you want, the base directory for the file is the same as the groovy file that's being processed. It's recommended that you create a subfolder in the app and/or device folder for your includes and that you use git to track these files as there is no way to reconstitute the files from the WebIDE.
+
+Also, you can have as many levels to your #include directives as you want, meaning an included file may in-turn include others. But all files are read from the corresponding app or device folder, so don't forget to add any subfolder needed to find the file.
+
 ## Automatic mode
-It's possible to set it up so any changes are automatically processed. Simply call ./stwatch.sh instead. Please note that it only supports -u & -p options. Please note that on start, it will LIST all files and any pending operations, BUT IT WILL NOT EXECUTE THEM. This is just to make sure you know what state you're in.
+It's possible to set it up so any changes are automatically processed. Simply call ./stwatch.sh instead. Please note that it only supports -u, -i and -p options. Please note that on start, it will LIST all files and any pending operations, BUT IT WILL NOT EXECUTE THEM. This is just to make sure you know what state you're in.
 
 ## Git support
 By default, when creating a repo, the script will also place a .gitignore file in the source folder to allow you to use git for source code tracking. It automatically
