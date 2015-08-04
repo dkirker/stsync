@@ -36,7 +36,7 @@ sub saveFile {
 	my $name = shift;
 	my $fh;
 
-	mkpath($base . dirname($name));
+	mkpath($base . "/" . dirname($name));
 	if ( ! -e "$base/$name" or $overwrite > 0) {
 		open($fh, ">", "$base/$name") or die "ERROR: Couldn't open file \"$base/$name\" for saving";
 	} else {
