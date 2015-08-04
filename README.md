@@ -84,6 +84,8 @@ The base-path for the #include directive is the same folder as the groovy-file t
 
 You can disable preprocessing by providing the "-d" options. You can also FORCE the system to overwrite includes when pulling down the repo by specifying "-o" (which is usually most useful if combined with "-S").
 
+**One important thing to remember, you MUST place the #include directives at the BOTTOM of the groovy file. At least for the base file which contains your app or device. Otherwise it will interfere with the defintions which MUST come first for SmartThings to understand the file.**
+
 Lastly, you can have as many levels to your #include directives as you want, meaning an included file may in-turn include others.
 
 ## Automatic mode
