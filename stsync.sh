@@ -72,6 +72,7 @@ function usage() {
 	echo "  -L        = Live Logging (experimental)"
 	echo "  -d        = DISABLE preprocessor directives (see README.md)"
 	echo "  -o        = Allow overwrite of include files (normally only new files are created)"
+	echo "  -F        = Force action, regardless of change"
 	echo ""
 	exit 0
 }
@@ -166,12 +167,21 @@ function checkDiff() {
 				DIFF="${DIFF}-"
 			fi
 
+			if [ $FORCE_ACTION -gt 0 ]; then
+				DIFF="UC"
+			fi
+
 			if [ "${DIFF}" != "--" -o $QUIET -eq 0 ]; then
 				if [ $TIMESTAMP -gt 0 ]; then
 					echo "Sync started $(date):"
 					TIMESTAMP=0
 				fi
-				echo "  ${DIFF} $1/${INFO[1]}"
+
+				if [ $FORCE_ACTION -gt 0 ]; then
+					echo "  UC $1/${INFO[1]} (forced)"
+				else
+					echo "  ${DIFF} $1/${INFO[1]}"
+				fi
 			fi
 
 			if [ $UPLOAD -gt 0 -a "${DIFF:1:1}" == "C" ]; then
@@ -237,10 +247,11 @@ QUIET=0
 TIMESTAMP=0
 INCLUDES=1
 INCLUDE_OVERWRITE=0
+FORCE_ACTION=0
 
 # Parse options
 #
-while getopts tsSdhpulqLfo: opt
+while getopts FtsSdhpulqLof: opt
 do
    	case "$opt" in
    		t) TIMESTAMP=1;;
@@ -254,6 +265,7 @@ do
 		L) MODE=logging;;
 		d) INCLUDES=0;;
 		o) INCLUDE_OVERWRITE=0;;
+		F) FORCE_ACTION=1;;
 		h) usage;;
 	esac
 done
@@ -358,6 +370,9 @@ if [ "${MODE}" == "diff" ]; then
 	checkDiff app
 	checkDiff device
 	if [ $QUIET -eq 0 ]; then
+		if [ $U -lt 0 ]; then U=0 ; fi
+		if [ $C -lt 0 ]; then C=0 ; fi
+
 		echo ""
 		echo "Checked ${I} files, ${U} unpublished, ${C} changed locally"
 	fi
