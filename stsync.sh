@@ -70,7 +70,8 @@ function usage() {
 	echo "  -q        = Quiet (less output)"
 	echo "  -l        = Always login"
 	echo "  -L        = Live Logging (experimental)"
-	echo "  -i        = enable include directives (see README.md)"
+	echo "  -d        = DISABLE preprocessor directives (see README.md)"
+	echo "  -o        = Allow overwrite of include files (normally only new files are created)"
 	echo ""
 	exit 0
 }
@@ -103,7 +104,7 @@ function download_repo() {
 					rm /tmp/login_ok
 					exit 255
 				fi
-				cat "${RAW_SOURCE}/${TYPE}/${SA_ID}.tmp" | "${TOOL_JSONDEC}" > "${CLEAN_SOURCE}/${TYPE}/${SA_FILE}"
+				cat "${RAW_SOURCE}/${TYPE}/${SA_ID}.tmp" | "${TOOL_JSONDEC}" | "${TOOL_PREPROCESS}" "${CLEAN_SOURCE}/$TYPE" ${INCLUDE_OVERWRITE} > "${CLEAN_SOURCE}/${TYPE}/${SA_FILE}"
 
 				# Finally, sha1 it, so we can detect diffs.
 				SHA=$(shasum "${CLEAN_SOURCE}/${TYPE}/${SA_FILE}")
@@ -127,7 +128,7 @@ function download_repo() {
 			if [ -f "${CLEAN_SOURCE}/${TYPE}/${SA_FILE}" -a ${FORCE} -eq 0 ]; then
 				echo "File exists, skipping (use FORCE to ignore)"
 			else
-				cat "${RAW_SOURCE}/${TYPE}/${FILE}_translate.html" | ${TOOL_EXTRACT}  > "${CLEAN_SOURCE}/${TYPE}/${SA_FILE}"
+				cat "${RAW_SOURCE}/${TYPE}/${FILE}_translate.html" | ${TOOL_EXTRACT}  | "${TOOL_PREPROCESS}" "${CLEAN_SOURCE}/$TYPE" ${INCLUDE_OVERWRITE} > "${CLEAN_SOURCE}/${TYPE}/${SA_FILE}"
 
 				# Finally, sha1 it, so we can detect diffs.
 				SHA=$(shasum "${CLEAN_SOURCE}/${TYPE}/${SA_FILE}")
@@ -234,11 +235,12 @@ UPLOAD=0
 SELECTED=
 QUIET=0
 TIMESTAMP=0
-INCLUDES=0
+INCLUDES=1
+INCLUDE_OVERWRITE=0
 
 # Parse options
 #
-while getopts tsSidhpulqLf: opt
+while getopts tsSdhpulqLfo: opt
 do
    	case "$opt" in
    		t) TIMESTAMP=1;;
@@ -250,7 +252,8 @@ do
 		q) QUIET=1;;
 		l) rm /tmp/login_ok 2>/dev/null 1>/dev/null ;;
 		L) MODE=logging;;
-		i) INCLUDES=1;;
+		d) INCLUDES=0;;
+		o) INCLUDE_OVERWRITE=0;;
 		h) usage;;
 	esac
 done

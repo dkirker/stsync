@@ -17,7 +17,7 @@ function usage() {
 	echo ""
 	echo "  -u        = Upload changes"
 	echo "  -p        = Publish changes (can be combined with -u)"
-	echo "  -i        = enable include directives (see README.md)"
+	echo "  -d        = DISABLE preprocessor directives (see README.md)"
 	echo "  -h        = This help"
 	echo ""
 	exit 0

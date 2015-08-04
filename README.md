@@ -67,16 +67,24 @@ Live Logging support, prints out the messages in your console.
 ### ./stsync.sh -h
 Shows all available options
 
-### ./stsync.sh -i
-Use include directive. This allows you to do local preprocessing before uploading it to the WebIDE. Currently the only supported directive is 
+### ./stsync.sh -d
+Disables preprocessing
+
+## Preprocessor directives
+
+Currently, STSYNC only supports one:
 
 ```
 #include "<file>"
 ```
 
-This will include any file you want, the base directory for the file is the same as the groovy file that's being processed. It's recommended that you create a subfolder in the app and/or device folder for your includes and that you use git to track these files as there is no way to reconstitute the files from the WebIDE.
+This will include any file you want, the base directory for the file is the same as the groovy file that's being processed. It's recommended that you create a subfolder in the app and/or device folder for your includes and that you use git to track these files. Stsync is able to reconstruct these files if you uploaded them using the tool (yes, even re-creating the folder structure needed), but keep in-mind that if various apps/devices used different versions of the includes, you may end up with old code inside your includes, so git is highly recommended to make sure you have the latest includes.
 
-Also, you can have as many levels to your #include directives as you want, meaning an included file may in-turn include others. But all files are read from the corresponding app or device folder, so don't forget to add any subfolder needed to find the file.
+The base-path for the #include directive is the same folder as the groovy-file that is using it. So for an app, that would be the app folder. You can ofcourse use includes from outside of the base folder by specifying "..", for example: #include "../device/include/some-include.groovy" but it's generally not recommended. If you need to use an include in both apps and devices, it's better to create an include folder on the same level as app and device folders. With that in mind, the directive would read #include "../include/some-include.groovy".
+
+You can disable preprocessing by providing the "-d" options. You can also FORCE the system to overwrite includes when pulling down the repo by specifying "-o" (which is usually most useful if combined with "-S").
+
+Lastly, you can have as many levels to your #include directives as you want, meaning an included file may in-turn include others.
 
 ## Automatic mode
 It's possible to set it up so any changes are automatically processed. Simply call ./stwatch.sh instead. Please note that it only supports -u, -i and -p options. Please note that on start, it will LIST all files and any pending operations, BUT IT WILL NOT EXECUTE THEM. This is just to make sure you know what state you're in.
