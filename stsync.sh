@@ -105,7 +105,7 @@ function download_repo() {
 					rm /tmp/login_ok
 					exit 255
 				fi
-				cat "${RAW_SOURCE}/${TYPE}/${SA_ID}.tmp" | "${TOOL_JSONDEC}" | "${TOOL_PREPROCESS}" "${CLEAN_SOURCE}/$TYPE" ${INCLUDE_OVERWRITE} > "${CLEAN_SOURCE}/${TYPE}/${SA_FILE}"
+				cat "${RAW_SOURCE}/${TYPE}/${SA_ID}.tmp" | "${TOOL_PREPROCESS}" "${CLEAN_SOURCE}/$TYPE" ${INCLUDE_OVERWRITE} > "${CLEAN_SOURCE}/${TYPE}/${SA_FILE}"
 
 				# Finally, sha1 it, so we can detect diffs.
 				SHA=$(shasum "${CLEAN_SOURCE}/${TYPE}/${SA_FILE}")
