@@ -70,8 +70,6 @@ else
 	exit 255
 fi
 
-# Get all pending
-bash stsync.sh -ql
 # Monitor
 MONITOR="fswatch -l 0.1 -i '.+\.groovy'"
 if [ $HAS_INOTIFY -gt 0 ]; then
