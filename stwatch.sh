@@ -73,7 +73,7 @@ fi
 # Get all pending
 bash stsync.sh -ql
 # Monitor
-MONITOR="fswatch -i '.+\.groovy'"
+MONITOR="fswatch -l 0.1 -i '.+\.groovy'"
 if [ $HAS_INOTIFY -gt 0 ]; then
 	MONITOR="inotifywait -q --format %w%f -me close_write -r"
 fi
