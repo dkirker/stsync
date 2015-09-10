@@ -25,7 +25,10 @@ foreach (@$json) {
 }
 
 while ( my ($k, $v) = each %layout ) {
-    print "$k \"$v\"\n"
+    my $file = $v->{"file"};
+    my $type = $v->{"type"}; # script, source, etc...
+    my $content = $v->{"content"}; # image/*** or similar
+    print "$k\n$content\n$type\n$file\n";
 }
 
 sub getFileAndId {
@@ -38,8 +41,15 @@ sub getFileAndId {
             %result = (%result, getFileAndId($path . "/" . $data->{"text"}, $_));
         }
     } elsif ($data->{"type"} and $data->{"type"} eq "file") {
-        $result{$data->{"id"}} = $path . "/" . $data->{"text"};
-        $result{$data->{"id"}} = substr $result{$data->{"id"}}, 1;
+        my $file = $path . "/" . $data->{"text"};
+        my $content = $data->{"li_attr"}->{"resource-content-type"};
+        my $type = $data->{"li_attr"}->{"resource-type"};
+        $file = substr $file, 1;
+
+        $result{$data->{"id"}} = ();
+        $result{$data->{"id"}}{"file"} = $file;
+        $result{$data->{"id"}}{"type"} = $type;
+        $result{$data->{"id"}}{"content"} = $content;
     }
     return %result;
 }

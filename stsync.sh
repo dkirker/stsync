@@ -22,6 +22,12 @@ if [ -f ~/.stsync ]; then
 	source ~/.stsync
 fi
 
+# Get the path of ourselves (need for symlinks)
+#
+pushd `dirname $0` > /dev/null
+SCRIPTPATH=`pwd`
+popd > /dev/null
+
 USERAGENT="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/43.0.2357.134 Safari/537.36"
 HEADERS=/tmp/headers.txt
 COOKIES=/tmp/cookies.txt
@@ -44,14 +50,17 @@ SMARTAPPS_DOWNLOAD="https://${SERVER}/ide/app/getCodeForResource"
 SMARTAPPS_COMPILE="https://${SERVER}/ide/app/compile"
 SMARTAPPS_PUBLISH="https://${SERVER}/ide/app/publishAjax"
 
+SMARTAPP_CDN="https://${SERVER}/ide/app/cdnImageURL"
+
 LOGGING_URL="https://${SERVER}/ide/logs"
 
-TOOL_JSONDEC="tools/json_decode.pl"
-TOOL_JSONENC="tools/json_encode.pl"
-TOOL_URLENC="tools/url_encode.pl"
-TOOL_EXTRACT="tools/extract_device.pl"
-TOOL_LOGGING="tools/livelogging.pl"
-TOOL_PREPROCESS="tools/preprocessor.pl"
+TOOL_JSONDEC="${SCRIPTPATH}/tools/json_decode.pl"
+TOOL_JSONENC="${SCRIPTPATH}/tools/json_encode.pl"
+TOOL_URLENC="${SCRIPTPATH}/tools/url_encode.pl"
+TOOL_EXTRACT="${SCRIPTPATH}/tools/extract_device.pl"
+TOOL_LOGGING="${SCRIPTPATH}/tools/livelogging.pl"
+TOOL_PREPROCESS="${SCRIPTPATH}/tools/preprocessor.pl"
+TOOL_PATHS="${SCRIPTPATH}/tools/json_paths.pl"
 
 function log_warn() {
 	echo -n "WARN: "
@@ -183,6 +192,8 @@ function usage() {
 	echo "  -d        = DISABLE preprocessor directives (see README.md)"
 	echo "  -o        = Allow overwrite of include files (normally only new files are created)"
 	echo "  -F        = Force action, regardless of change"
+	#echo "  -j        = Journaling mode (see README.md)"
+	#echo "  -a <file> = Add file to repository"
 	echo ""
 	exit 0
 }
@@ -195,36 +206,70 @@ function download_repo() {
 		# Download the mapping between ID and actual script and save it
 		# so we have that info readily available later.
 		if [ "${TYPE}" == "app" ]; then
+			COUNTER=0
+			CONTENT=""
+
 			webide_execWithLogin curl -s -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" -o "${RAW_SOURCE}/${TYPE}/${FILE}_translate.json" "https://${SERVER}/ide/${TYPE}/getResourceList?id=${FILE}"
-
-			TMP="$( egrep -o "${SMARTAPPS_EXTRACT_IDFILE}" ${RAW_SOURCE}/${TYPE}/${FILE}_translate.json)"
-			SA_ID="$(echo ${TMP} | egrep -o "${SMARTAPPS_EXTRACT_ID}")"
-			SA_ID="${SA_ID:5}"
-			SA_FILE="$(echo ${TMP} | egrep -o "${SMARTAPPS_EXTRACT_FILE}")"
-			SA_FILE=${SA_FILE:7}
-
-			echo -n "   ${SA_FILE} - "
-			if [[ "{SA_FILE}" == *:* ]] ; then
-				echo "CORRUPT!"
-				exit 255
-			fi
-
-			if [ -f "${CLEAN_SOURCE}/${TYPE}/${SA_FILE}" -a ${FORCE} -eq 0 ]; then
-				echo "File exists, skipping (use FORCE to ignore)"
+			ITEMS=($( cat ${RAW_SOURCE}/${TYPE}/${FILE}_translate.json | ${TOOL_PATHS}))
+			SA_ID=
+			SA_FILE=
+			SA_TYPE=
+			SA_CONTENT=
+			SA_HOME=
+			# First, locate the groovy file and obtain the path we need
+			for X in "${ITEMS[@]}"; do
+				if [ "${X##*\.}" == "groovy" ]; then
+					SA_HOME="${X%.groovy}.src"
+				fi
+			done
+			if [ "" == "${SA_HOME}" ]; then
+				log_warn "$FILE has no groovy code, skipped!"
 			else
-				# Download the actual script now
-				webide_execWithLogin curl -s  --progress -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" -X POST -d "id=${FILE}&resourceId=${SA_ID}&resourceType=script" -o "${RAW_SOURCE}/${TYPE}/${SA_ID}.tmp" "https://${SERVER}/ide/${TYPE}/getCodeForResource"
+				for X in "${ITEMS[@]}"; do
+					if [ "" == "${SA_ID}" ]; then
+						SA_ID="${X}"
+					elif [ "" == "${SA_CONTENT}" ]; then
+						SA_CONTENT="${X}"
+					elif [ "" == "${SA_TYPE}" ]; then
+						SA_TYPE="${X}"
+					elif [ "" == "${SA_FILE}" ]; then
+						SA_PLAIN_FILE="${X}"
+						SA_FILE="${SA_HOME}/${X}"
+						printf "   %-60.60s - " "${SA_FILE}"
 
-				cat "${RAW_SOURCE}/${TYPE}/${SA_ID}.tmp" | "${TOOL_PREPROCESS}" "${CLEAN_SOURCE}/$TYPE" ${INCLUDE_OVERWRITE} > "${CLEAN_SOURCE}/${TYPE}/${SA_FILE}"
+						# Make sure the directory structure is there
+						mkdir -p "$(dirname "${CLEAN_SOURCE}/${TYPE}/${SA_FILE}")"
 
-				# Finally, sha1 it, so we can detect diffs.
-				SHA=$(shasum "${CLEAN_SOURCE}/${TYPE}/${SA_FILE}")
-				SHA="${SHA:0:40}"
-				echo "${SA_ID} ${SA_FILE} ${SHA}" > "${RAW_SOURCE}/${TYPE}/${FILE}.map"
-				echo "OK"
+						if [ -f "${CLEAN_SOURCE}/${TYPE}/${SA_FILE}" -a ${FORCE} -eq 0 ]; then
+							echo "Skipped"
+						else
+							# Download the actual script now... unless it's an image (wtf)
+							if [ "${SA_CONTENT%/*}" == "image" ]; then
+								webide_execWithLogin curl -s -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" -X POST -d "id=${FILE}&fileName=$(basename "${SA_FILE}")&filePath=$(dirname "${SA_PLAIN_FILE}")" -o /tmp/getresult "${SMARTAPP_CDN}"
+								URL="$(cat /tmp/getresult | ${TOOL_JSONDEC} imageUrl)"
+								webide_execWithLogin curl -s -o "${RAW_SOURCE}/${TYPE}/${SA_ID}.tmp" "${URL}"
+								touch "${RAW_SOURCE}/${TYPE}/${SA_ID}.tmp" # This is needed since files may be zero length
+								cp "${RAW_SOURCE}/${TYPE}/${SA_ID}.tmp" "${CLEAN_SOURCE}/${TYPE}/${SA_FILE}"
+							else
+								webide_execWithLogin curl -s -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" -X POST -d "id=${FILE}&resourceId=${SA_ID}&resourceType=${SA_TYPE}" -o "${RAW_SOURCE}/${TYPE}/${SA_ID}.tmp" "https://${SERVER}/ide/${TYPE}/getCodeForResource"
+								touch "${RAW_SOURCE}/${TYPE}/${SA_ID}.tmp" # This is needed since files may be zero length
+								cat "${RAW_SOURCE}/${TYPE}/${SA_ID}.tmp" | "${TOOL_PREPROCESS}" "${CLEAN_SOURCE}/$TYPE/${SA_HOME}" ${INCLUDE_OVERWRITE} > "${CLEAN_SOURCE}/${TYPE}/${SA_FILE}"
+							fi
+							# Finally, sha1 it, so we can detect diffs.
+							SHA=$(shasum "${CLEAN_SOURCE}/${TYPE}/${SA_FILE}")
+							SHA="${SHA:0:40}"
+							echo "${FILE} ${SA_ID} ${SA_FILE} ${SA_CONTENT} ${SA_TYPE} ${SHA}" > "${RAW_SOURCE}/${TYPE}/${SHA}.map"
+							echo "OK (${SA_CONTENT})"
+						fi
+						SA_TYPE=
+						SA_CONTENT=
+						SA_ID=
+						SA_FILE=
+					fi
+				done
 			fi
 		else
-			webide_execWithLogin curl -s  --progress -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" -o "${RAW_SOURCE}/${TYPE}/${FILE}_translate.html" "https://${SERVER}/ide/device/editor/${FILE}"
+			webide_execWithLogin curl -s -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" -o "${RAW_SOURCE}/${TYPE}/${FILE}_translate.html" "https://${SERVER}/ide/device/editor/${FILE}"
 
 			SA_FILE="$(egrep -o '<title>([^<]+)' "${RAW_SOURCE}/${TYPE}/${FILE}_translate.html")"
 			SA_FILE="${SA_FILE##\<title\>}"
@@ -235,20 +280,19 @@ function download_repo() {
 			SA_ID="$(egrep -o '("[^"]+" id="id")' "${RAW_SOURCE}/${TYPE}/${FILE}_translate.html")"
 			SA_ID="${SA_ID##\"}"
 			SA_ID="${SA_ID%%\" id=\"id\"}"
-			echo -n "   ${SA_FILE} - "
+			printf "   %-60.60s - " "${SA_FILE}"
 			if [ -f "${CLEAN_SOURCE}/${TYPE}/${SA_FILE}" -a ${FORCE} -eq 0 ]; then
-				echo "File exists, skipping (use FORCE to ignore)"
+				echo "Skipped"
 			else
 				cat "${RAW_SOURCE}/${TYPE}/${FILE}_translate.html" | ${TOOL_EXTRACT}  | "${TOOL_PREPROCESS}" "${CLEAN_SOURCE}/$TYPE" ${INCLUDE_OVERWRITE} > "${CLEAN_SOURCE}/${TYPE}/${SA_FILE}"
 
 				# Finally, sha1 it, so we can detect diffs.
 				SHA=$(shasum "${CLEAN_SOURCE}/${TYPE}/${SA_FILE}")
 				SHA="${SHA:0:40}"
-				echo "${SA_ID} ${SA_FILE} ${SHA}" > "${RAW_SOURCE}/${TYPE}/${FILE}.map"
-				echo "OK"
+				echo "${FILE} ${SA_ID} ${SA_FILE} X X ${SHA}" > "${RAW_SOURCE}/${TYPE}/${FILE}.map"
+				echo "OK (text/plain)"
 			fi
 		fi
-
 	done
 }
 
@@ -256,21 +300,21 @@ function checkDiff() {
 	for FILE in "${RAW_SOURCE}/$1/"*.map; do
 		ID="$(basename "${FILE}")"
 		ID="${ID%%.map}"
-		INFO=( $(cat "${FILE}") ) # 0 = Resource ID, 1 = File, 2 = sha checksum (diff)
-		SHA=( $(shasum "${CLEAN_SOURCE}/$1/${INFO[1]}") )
+		INFO=( $(cat "${FILE}") ) # 0 = Project ID, 1 = Resource ID, 2 = File, 3 = Content, 4 = Type, 5 = sha checksum (diff), 6 = UNPUBLISHED
+		SHA=( $(shasum "${CLEAN_SOURCE}/$1/${INFO[2]}") )
 
-		if [ "${SELECTED}" == "" -o "${SELECTED}" == "${INFO[1]}" ]; then
+		if [ "${SELECTED}" == "" -o "${SELECTED}" == "$1/${INFO[2]}" ]; then
 			ERROR=0
 			I=$((${I} + 1))
 			DIFF=""
-			if [ "${INFO[3]}" == "UNPUBLISHED" ]; then
+			if [ "${INFO[6]}" == "UNPUBLISHED" ]; then
 				DIFF="${DIFF}U"
 				U=$((${U} + 1))
 			else
 				DIFF="${DIFF}-"
 			fi
 
-			if [ "${SHA[0]}" != "${INFO[2]}" ]; then
+			if [ "${SHA[0]}" != "${INFO[5]}" ]; then
 				DIFF="${DIFF}C"
 				C=$((${C} + 1))
 			else
@@ -288,21 +332,21 @@ function checkDiff() {
 				fi
 
 				if [ $FORCE_ACTION -gt 0 ]; then
-					echo "  UC $1/${INFO[1]} (forced)"
+					echo "  UC $1/${INFO[2]} (forced)"
 				else
-					echo "  ${DIFF} $1/${INFO[1]}"
+					echo "  ${DIFF} $1/${INFO[2]}"
 				fi
 			fi
 
 			if [ $UPLOAD -gt 0 -a "${DIFF:1:1}" == "C" ]; then
-				echo -n "     Uploading... "
 				# Build the data to post (it's massive, so temp file!)
-				echo -n > /tmp/postdata "id=${ID}&location=&resource=${INFO[0]}&resourceType=script&code="
+				echo -n > /tmp/postdata "id=${INFO[0]}&location=&resource=${INFO[1]}&resourceType=${INFO[4]}&code="
 				if [ $INCLUDES -gt 0 ]; then
-					echo -n "Preprocessing... "
-					cat "${CLEAN_SOURCE}/$1/${INFO[1]}" | ${TOOL_PREPROCESS} "${CLEAN_SOURCE}/$1" | ${TOOL_URLENC} >> /tmp/postdata
+					echo -n "     Preprocessing & Uploading... "
+					cat "${CLEAN_SOURCE}/$1/${INFO[2]}" | ${TOOL_PREPROCESS} "${CLEAN_SOURCE}/$1/$(dirname "${INFO[2]}")/" | ${TOOL_URLENC} >> /tmp/postdata
 				else
-					cat "${CLEAN_SOURCE}/$1/${INFO[1]}" | ${TOOL_URLENC} >> /tmp/postdata
+					echo -n "     Uploading... "
+					cat "${CLEAN_SOURCE}/$1/${INFO[2]}" | ${TOOL_URLENC} >> /tmp/postdata
 				fi
 				webide_execWithLogin curl -s -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" -X POST -d @/tmp/postdata -o /tmp/post_result "https://${SERVER}/ide/$1/compile"
 
@@ -317,9 +361,9 @@ function checkDiff() {
 					echo ""
 					ERROR=1
 				else
-					SHA=$(shasum "${CLEAN_SOURCE}/$1/${INFO[1]}")
+					SHA=$(shasum "${CLEAN_SOURCE}/$1/${INFO[2]}")
 					SHA="${SHA:0:40}"
-					echo "${INFO[0]} ${INFO[1]} ${SHA} UNPUBLISHED" > "${FILE}"
+					echo "${INFO[0]} ${INFO[1]} ${INFO[2]} ${INFO[3]} ${INFO[4]} ${SHA} UNPUBLISHED" > "${FILE}"
 					C=$((${C} - 1))
 					U=$((${C} - 1))
 					DIFF="U-"
@@ -331,11 +375,15 @@ function checkDiff() {
 					echo "     NOT publishing since you had an error"
 				else
 					echo -n "     Publishing... "
-					webide_execWithLogin curl -s -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" -X POST -d "id=${ID}&scope=me" -o /tmp/post_result "https://${SERVER}/ide/$1/publishAjax"
-					echo "${INFO[0]} ${INFO[1]} ${SHA}" > "${FILE}"
+					webide_execWithLogin curl -s -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" -X POST -d "id=${INFO[0]}&scope=me" -o /tmp/post_result "https://${SERVER}/ide/$1/publishAjax"
+					echo "${INFO[0]} ${INFO[1]} ${INFO[2]} ${INFO[3]} ${INFO[4]} ${SHA}" > "${FILE}"
 					echo "OK"
 					U=$((${U} - 1))
 				fi
+			fi
+
+			if [ "${SELECTED}" != "" ]; then
+				return
 			fi
 		fi
 	done
@@ -365,7 +413,7 @@ do
 		S) MODE=sync ; FORCE=1;;
 		p) PUBLISH=1;;
 		u) UPLOAD=1;;
-		f) SELECTED="$(basename "$OPTARG")";;
+		f) SELECTED="$OPTARG";;
 		q) QUIET=1;;
 		l) rm /tmp/login_ok 2>/dev/null 1>/dev/null ;;
 		L) MODE=logging;;
@@ -390,7 +438,7 @@ if [ $QUIET -eq 0 ]; then
 fi
 
 eval CLEAN_SOURCE="${SOURCE}"
-RAW_SOURCE="${CLEAN_SOURCE}/raw/"
+RAW_SOURCE="${CLEAN_SOURCE}/.raw/"
 
 # Sanity testing
 #
@@ -409,14 +457,9 @@ if [ "${SOURCE}" == "" ]; then
 	exit 255
 fi
 
-if [ "${SELECTED: -7}" != ".groovy" -a "${SELECTED}" != "" ]; then
-	if [ $QUIET -eq 0 ]; then
-		log_err "You cannot select a non-groovy file"
-		exit 255
-	else
-		# Special case, hide errors from caller
-		exit 0
-	fi
+# Clean up the filename if -f is used
+if [ "${SELECTED}" != "" ]; then
+	SELECTED="${SELECTED#${CLEAN_SOURCE}}"
 fi
 
 # Get the path of ourselves (need for symlinks)
@@ -435,18 +478,25 @@ if [ "${MODE}" == "sync" ]; then
 	mkdir -p "${CLEAN_SOURCE}/device"
 	mkdir -p "${RAW_SOURCE}/app"
 	mkdir -p "${RAW_SOURCE}/device"
+	echo "(this initial download will sometimes take up to a minute or two)"
 	webide_execWithLogin curl -s -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" -o "${RAW_SOURCE}/app/smartapps.lst" "${SMARTAPPS_URL}"
 	webide_execWithLogin curl -s -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" -o "${RAW_SOURCE}/device/devicetypes.lst" "${DEVICETYPES_URL}"
-
+	echo ""
 	# Get the APP ids
 	IDS="$(egrep -o "${SMARTAPPS_LINK}" "${RAW_SOURCE}/app/smartapps.lst")"
+	echo "Downloading SmartApps:"
 	download_repo "app" "${IDS}"
 	IDS="$(egrep -o "${DEVICETYPES_LINK}" "${RAW_SOURCE}/device/devicetypes.lst")"
+	echo ""
+	echo "Downloading Device Types:"
 	download_repo "device" "${IDS}"
 	if [ ! -f "${CLEAN_SOURCE}/.gitignore" ]; then
 		# Create a gitignore in-case the user will use git
-		echo >"${CLEAN_SOURCE}/.gitignore" "raw/"
+		echo >"${CLEAN_SOURCE}/.gitignore" ".raw/"
 	fi
+	echo ""
+	echo "Finished! Your projects can be found at ${CLEAN_SOURCE}"
+	echo ""
 fi
 
 if [ "${MODE}" == "diff" ]; then
