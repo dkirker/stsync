@@ -53,11 +53,97 @@ TOOL_EXTRACT="tools/extract_device.pl"
 TOOL_LOGGING="tools/livelogging.pl"
 TOOL_PREPROCESS="tools/preprocessor.pl"
 
-function checkAuthError() {
+function log_warn() {
+	echo -n "WARN: "
+	echo $@
+}
+
+function log_err() {
+	echo -n "ERROR: "
+	echo $@
+}
+
+function log_info() {
+	echo -n "INFO: "
+	echo $@
+}
+
+function webide_login() {
+	if [ ! -f /tmp/login_ok ]; then
+		curl -A "${USERAGENT}" -D "${HEADERS}" -c "${COOKIES}" -X POST -d "j_username=${USERNAME}&j_password=${PASSWORD}" ${LOGIN_URL}
+		if grep "${LOGIN_FAIL}" "${HEADERS}" ; then
+			echo "ERROR: Login failed, check username/password"
+			exit 255
+		fi
+		if [ $QUIET -eq 0 ]; then
+			echo "Login successful and cached"
+		fi
+		touch /tmp/login_ok
+	fi
+}
+
+function webide_needLogin() {
 	if grep "${LOGIN_NEEDED}" "${HEADERS}" >/dev/null ; then
-		echo "ERROR: Server refusing access, login has probably expired. Try again."
+		log_warn "Server refusing access, login has probably expired."
 		rm /tmp/login_ok
+		return 0
+	fi
+	return 1
+}
+
+function checkAuthError() {
+	if webide_checkLogin; then
 		exit 255
+	fi
+}
+
+function needQuotes() {
+	case "$@" in
+	     *\ * )
+	           return 0
+	          ;;
+	     *\&* )
+	           return 0
+	          ;;
+	       *)
+	           return 1
+	           ;;
+	esac
+}
+
+# Executes the provided arguments as a command
+# and checks if it was successful or not, will
+# automatically retry after a login.
+#
+function webide_execWithLogin() {
+	CMDLINE=
+	for X in "$@"; do
+		if needQuotes $X; then
+			CMDLINE="${CMDLINE} \"${X}\""
+		else
+			CMDLINE="${CMDLINE} ${X}"
+		fi
+	done
+	eval $CMDLINE
+	RESULT=$?
+	if [ $RESULT -ne 0 ]; then
+		log_err "$CMDLINE failed with error code $RESULT"
+		exit 255
+	fi
+	if webide_needLogin; then
+		# Login and try again
+		webide_login
+		log_info "Retrying..."
+		eval $CMDLINE
+		RESULT=$?
+		if [ $RESULT -ne 0 ]; then
+			log_err "$CMDLINE failed with error code $RESULT"
+			exit 255
+		fi
+		if webide_needLogin; then
+			log_err "Unable to login"
+			exit 255
+		fi
 	fi
 }
 
@@ -86,7 +172,7 @@ function usage() {
 	echo "environment."
 	echo ""
 	echo "  -s        = Start a new repository (essentially downloading your ST apps and device types)"
-	echo "  -S        = Same as -s but WILL overwrite any existing files. Use with care, you'll lose any changes you've made"
+	echo "  -S        = Same as -s but WILL overwrite any existing files. Use with care, you'll lose any local changes you've made"
 	echo "  -u        = Upload changes"
 	echo "  -p        = Publish changes (can be combined with -u)"
 	echo "  -f <file> = Make -u & -p apply to <file> ONLY"
@@ -109,8 +195,8 @@ function download_repo() {
 		# Download the mapping between ID and actual script and save it
 		# so we have that info readily available later.
 		if [ "${TYPE}" == "app" ]; then
-			curl -s -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" "https://${SERVER}/ide/${TYPE}/getResourceList?id=${FILE}" -o "${RAW_SOURCE}/${TYPE}/${FILE}_translate.json"
-			checkAuthError
+			webide_execWithLogin curl -s -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" -o "${RAW_SOURCE}/${TYPE}/${FILE}_translate.json" "https://${SERVER}/ide/${TYPE}/getResourceList?id=${FILE}"
+
 			TMP="$( egrep -o "${SMARTAPPS_EXTRACT_IDFILE}" ${RAW_SOURCE}/${TYPE}/${FILE}_translate.json)"
 			SA_ID="$(echo ${TMP} | egrep -o "${SMARTAPPS_EXTRACT_ID}")"
 			SA_ID="${SA_ID:5}"
@@ -118,17 +204,17 @@ function download_repo() {
 			SA_FILE=${SA_FILE:7}
 
 			echo -n "   ${SA_FILE} - "
+			if [[ "{SA_FILE}" == *:* ]] ; then
+				echo "CORRUPT!"
+				exit 255
+			fi
 
 			if [ -f "${CLEAN_SOURCE}/${TYPE}/${SA_FILE}" -a ${FORCE} -eq 0 ]; then
 				echo "File exists, skipping (use FORCE to ignore)"
 			else
 				# Download the actual script now
-				curl -s -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" -X POST -d "id=${FILE}&resourceId=${SA_ID}&resourceType=script" "https://${SERVER}/ide/${TYPE}/getCodeForResource" -o "${RAW_SOURCE}/${TYPE}/${SA_ID}.tmp"
-				if grep "${LOGIN_NEEDED}" "${HEADERS}" >/dev/null ; then
-					echo "ERROR: Failed to download source"
-					rm /tmp/login_ok
-					exit 255
-				fi
+				webide_execWithLogin curl -s  --progress -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" -X POST -d "id=${FILE}&resourceId=${SA_ID}&resourceType=script" -o "${RAW_SOURCE}/${TYPE}/${SA_ID}.tmp" "https://${SERVER}/ide/${TYPE}/getCodeForResource"
+
 				cat "${RAW_SOURCE}/${TYPE}/${SA_ID}.tmp" | "${TOOL_PREPROCESS}" "${CLEAN_SOURCE}/$TYPE" ${INCLUDE_OVERWRITE} > "${CLEAN_SOURCE}/${TYPE}/${SA_FILE}"
 
 				# Finally, sha1 it, so we can detect diffs.
@@ -138,8 +224,8 @@ function download_repo() {
 				echo "OK"
 			fi
 		else
-			curl -s -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" "https://${SERVER}/ide/device/editor/${FILE}" -o "${RAW_SOURCE}/${TYPE}/${FILE}_translate.html"
-			checkAuthError
+			webide_execWithLogin curl -s  --progress -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" -o "${RAW_SOURCE}/${TYPE}/${FILE}_translate.html" "https://${SERVER}/ide/device/editor/${FILE}"
+
 			SA_FILE="$(egrep -o '<title>([^<]+)' "${RAW_SOURCE}/${TYPE}/${FILE}_translate.html")"
 			SA_FILE="${SA_FILE##\<title\>}"
 			SA_FILE="${SA_FILE// /-}.groovy"
@@ -218,12 +304,8 @@ function checkDiff() {
 				else
 					cat "${CLEAN_SOURCE}/$1/${INFO[1]}" | ${TOOL_URLENC} >> /tmp/postdata
 				fi
-				curl -s -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" -X POST -d @/tmp/postdata "https://${SERVER}/ide/$1/compile" > /tmp/post_result
-				if grep "${LOGIN_NEEDED}" "${HEADERS}" >/dev/null ; then
-					echo "ERROR: Failed to push changes, login timed out. Try again"
-					rm /tmp/login_ok
-					exit 255
-				fi
+				webide_execWithLogin curl -s -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" -X POST -d @/tmp/postdata -o /tmp/post_result "https://${SERVER}/ide/$1/compile"
+
 				if grep '{"errors":\["' /tmp/post_result 2>/dev/null 1>/dev/null ; then
 					echo "ERROR!"
 					echo "Upload failed due to compilation errors:"
@@ -249,12 +331,7 @@ function checkDiff() {
 					echo "     NOT publishing since you had an error"
 				else
 					echo -n "     Publishing... "
-					curl -s -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" -X POST -d "id=${ID}&scope=me" "https://${SERVER}/ide/$1/publishAjax" > /tmp/post_result
-					if grep "${LOGIN_NEEDED}" "${HEADERS}" >/dev/null ; then
-						echo "ERROR: Failed to push changes, login timed out. Try again"
-						rm /tmp/login_ok
-						exit 255
-					fi
+					webide_execWithLogin curl -s -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" -X POST -d "id=${ID}&scope=me" -o /tmp/post_result "https://${SERVER}/ide/$1/publishAjax"
 					echo "${INFO[0]} ${INFO[1]} ${SHA}" > "${FILE}"
 					echo "OK"
 					U=$((${U} - 1))
@@ -306,7 +383,7 @@ if [ $QUIET -eq 0 ]; then
 	echo ""
 
 	if [ "${SERVER}" != "graph.api.smartthings.com" ]; then
-		echo "Note! Using ${SERVER} instead of regular end-point"
+		log_info "Note! Using ${SERVER} instead of regular end-point"
 		echo ""
 	fi
 
@@ -318,7 +395,7 @@ RAW_SOURCE="${CLEAN_SOURCE}/raw/"
 # Sanity testing
 #
 if [ "${USERNAME}" == "" -o "${PASSWORD}" == "" ]; then
-	echo "ERROR: No username and/or password. Please create a personal settings file in ~/.stsync"
+	log_err "No username and/or password. Please create a personal settings file in ~/.stsync"
 	exit 255
 fi
 
@@ -328,13 +405,13 @@ USERNAME="$( rawurlencode "${USERNAME}" )"
 PASSWORD="$( rawurlencode "${PASSWORD}" )"
 
 if [ "${SOURCE}" == "" ]; then
-	echo "ERROR: No source directory specified in ~/.stsync"
+	log_err "No source directory specified in ~/.stsync"
 	exit 255
 fi
 
 if [ "${SELECTED: -7}" != ".groovy" -a "${SELECTED}" != "" ]; then
 	if [ $QUIET -eq 0 ]; then
-		echo "ERROR: You cannot select a non-groovy file"
+		log_err "You cannot select a non-groovy file"
 		exit 255
 	else
 		# Special case, hide errors from caller
@@ -350,17 +427,7 @@ popd > /dev/null
 
 # If we haven't logged in, do so now
 #
-if [ ! -f /tmp/login_ok ]; then
-	curl -A "${USERAGENT}" -D "${HEADERS}" -c "${COOKIES}" -X POST -d "j_username=${USERNAME}&j_password=${PASSWORD}" ${LOGIN_URL}
-	if grep "${LOGIN_FAIL}" "${HEADERS}" ; then
-		echo "ERROR: Login failed, check username/password"
-		exit 255
-	fi
-	if [ $QUIET -eq 0 ]; then
-		echo "Login successful and cached"
-	fi
-	touch /tmp/login_ok
-fi
+webide_login
 
 if [ "${MODE}" == "sync" ]; then
 	echo "Downloading repository to ${CLEAN_SOURCE}:"
@@ -368,10 +435,8 @@ if [ "${MODE}" == "sync" ]; then
 	mkdir -p "${CLEAN_SOURCE}/device"
 	mkdir -p "${RAW_SOURCE}/app"
 	mkdir -p "${RAW_SOURCE}/device"
-	curl -s -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" ${SMARTAPPS_URL} -o "${RAW_SOURCE}/app/smartapps.lst"
-	checkAuthError
-	curl -s -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" ${DEVICETYPES_URL} -o "${RAW_SOURCE}/device/devicetypes.lst"
-	checkAuthError
+	webide_execWithLogin curl -s -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" -o "${RAW_SOURCE}/app/smartapps.lst" "${SMARTAPPS_URL}"
+	webide_execWithLogin curl -s -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" -o "${RAW_SOURCE}/device/devicetypes.lst" "${DEVICETYPES_URL}"
 
 	# Get the APP ids
 	IDS="$(egrep -o "${SMARTAPPS_LINK}" "${RAW_SOURCE}/app/smartapps.lst")"
@@ -386,7 +451,7 @@ fi
 
 if [ "${MODE}" == "diff" ]; then
 	if [ ! -d "${RAW_SOURCE}" -o ! -d "${CLEAN_SOURCE}" ]; then
-		echo "ERROR: You haven't initialized a repository or the path is wrong"
+		log_err "You haven't initialized a repository or the path is wrong"
 		exit 255
 	fi
 
@@ -414,7 +479,7 @@ if [ "${MODE}" == "diff" ]; then
 fi
 
 if [ "${MODE}" == "logging" ]; then
-	curl -s -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" ${LOGGING_URL} -o "/tmp/get_data"
+	curl -s -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" -o "/tmp/get_data" ${LOGGING_URL}
 	checkAuthError
 	WEBSOCKET="$(egrep -o "websocket: \'[^\']+" /tmp/get_data)"
 	WEBSOCKET="${WEBSOCKET##websocket: \'}"
