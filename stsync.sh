@@ -315,7 +315,7 @@ function checkDiff() {
 
 				if grep '{"errors":\["' /tmp/post_result 2>/dev/null 1>/dev/null ; then
 					echo -e "ERROR!\n"
-					echo -n "${INFO[2]}:"
+					echo -n "$(basename "${INFO[2]}"):"
 					# Do not change the following 3 lines, they have to be this way to get \n into the feed.
 					cat /tmp/post_result | ${TOOL_JSONDEC} errors | sed -E 's/script[0-9]+\.{0,1}//g' | sed -nE 's/(.*) @ line ([0-9]+)$/\2: \1/p' | sed -E 's/: /:\
     /g'
