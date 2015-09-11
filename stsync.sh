@@ -41,7 +41,7 @@ function log() {
 
 function webide_login() {
 	if [ ! -f /tmp/login_ok ]; then
-		curl -A "${USERAGENT}" -D "${HEADERS}" -c "${COOKIES}" -X POST -d "j_username=${USERNAME}&j_password=${PASSWORD}" ${LOGIN_URL}
+		curl -s -A "${USERAGENT}" -D "${HEADERS}" -c "${COOKIES}" -X POST -d "j_username=${USERNAME}&j_password=${PASSWORD}" ${LOGIN_URL}
 		if grep "${LOGIN_FAIL}" "${HEADERS}" ; then
 			log_err "Login failed, check username/password"
 			exit 255
