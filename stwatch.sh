@@ -71,8 +71,8 @@ else
 fi
 
 # Monitor
-MONITOR="fswatch -l 0.1"
+MONITOR="fswatch -l 0.1 -e \"\.raw\""
 if [ $HAS_INOTIFY -gt 0 ]; then
 	MONITOR="inotifywait -q --format %w%f -me close_write -r"
 fi
-${MONITOR} "${CLEAN_SOURCE}" | xargs -n 1 bash stsync.sh ${CMDLINE} -f
+eval ${MONITOR} "${CLEAN_SOURCE}" | xargs -n 1 bash stsync.sh ${CMDLINE} -f
