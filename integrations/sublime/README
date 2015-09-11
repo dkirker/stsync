@@ -1,0 +1,15 @@
+First make sure that the stsync.sh command can be reached from your
+default path (just open a shell and enter "stsync.sh" without quotes).
+
+If this is not the case, make sure to edit the path variable so it's
+reachable.
+
+Next, copy the SmartThings.sublime-build into Sublime's Packages/User
+folder and make sure the "Tools > Build System > SmartThings" is checked.
+
+Voila, you can now use F7 to upload and publish a file.
+
+Notes!
+If you're running Sublime on OSX, you may need to install "Fix Mac Path",
+see https://packagecontrol.io/packages/Fix%20Mac%20Path or the path changes
+you've made will not carry over to Sublime.

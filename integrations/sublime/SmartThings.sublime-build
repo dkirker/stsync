@@ -1,0 +1,4 @@
+{
+    "cmd": ["stsync.sh", "-upf", "$file"],
+    "file_regex": "^([^:]+):([0-9]+):"
+}
