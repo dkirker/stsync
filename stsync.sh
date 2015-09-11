@@ -314,12 +314,12 @@ function checkDiff() {
 				webide_execWithLogin curl -s -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" -X POST -d @/tmp/postdata -o /tmp/post_result "https://${SERVER}/ide/$1/compile"
 
 				if grep '{"errors":\["' /tmp/post_result 2>/dev/null 1>/dev/null ; then
-					echo "ERROR!"
-					echo "Upload failed due to compilation errors:"
+					echo -e "ERROR!\n"
+					echo -n "${INFO[2]}:"
 					# Do not change the following 3 lines, they have to be this way to get \n into the feed.
-					cat /tmp/post_result | ${TOOL_JSONDEC} errors | sed -E 's/script[0-9]+\.{0,1}//g' | sed -nE 's/(.*) @ line ([0-9]+)$/Line \2:\
-  \1/p' | sed -E 's/: /:\
+					cat /tmp/post_result | ${TOOL_JSONDEC} errors | sed -E 's/script[0-9]+\.{0,1}//g' | sed -nE 's/(.*) @ line ([0-9]+)$/\2: \1/p' | sed -E 's/: /:\
     /g'
+					echo ""
 					echo '>>>Did not upload or publish the file<<<'
 					echo ""
 					ERROR=1
