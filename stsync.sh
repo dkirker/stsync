@@ -16,64 +16,26 @@ PASSWORD=""
 SOURCE=""
 SERVER="graph.api.smartthings.com"
 
-# Load user settings and allow override of the above values
-#
-if [ -f ~/.stsync ]; then
-	source ~/.stsync
-fi
-
-# Get the path of ourselves (need for symlinks)
-#
-pushd `dirname $0` > /dev/null
-SCRIPTPATH=`pwd`
-popd > /dev/null
-
-USERAGENT="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/43.0.2357.134 Safari/537.36"
-HEADERS=/tmp/headers.txt
-COOKIES=/tmp/cookies.txt
-
-LOGIN_URL="https://${SERVER}/j_spring_security_check"
-LOGIN_FAIL="https://${SERVER}/login/authfail?"
-LOGIN_NEEDED="https://${SERVER}/login/auth"
-
-SMARTAPPS_URL="https://${SERVER}/ide/apps"
-DEVICETYPES_URL="https://${SERVER}/ide/devices"
-SMARTAPPS_LINK="/ide/app/editor/[^\"]+"
-DEVICETYPES_LINK="/ide/device/editor/[^\"]+"
-
-SMARTAPPS_TRANSLATE="https://${SERVER}/ide/app/getResourceList?id="
-SMARTAPPS_EXTRACT_IDFILE="(id\":\"[^\"]+)\",\"text\":\"[^\"]+"
-SMARTAPPS_EXTRACT_ID="(id\":\"[^\"]+)"
-SMARTAPPS_EXTRACT_FILE="(text\":\"[^\"]+)"
-SMARTAPPS_DOWNLOAD="https://${SERVER}/ide/app/getCodeForResource"
-
-SMARTAPPS_COMPILE="https://${SERVER}/ide/app/compile"
-SMARTAPPS_PUBLISH="https://${SERVER}/ide/app/publishAjax"
-
-SMARTAPP_CDN="https://${SERVER}/ide/app/cdnImageURL"
-
-LOGGING_URL="https://${SERVER}/ide/logs"
-
-TOOL_JSONDEC="${SCRIPTPATH}/tools/json_decode.pl"
-TOOL_JSONENC="${SCRIPTPATH}/tools/json_encode.pl"
-TOOL_URLENC="${SCRIPTPATH}/tools/url_encode.pl"
-TOOL_EXTRACT="${SCRIPTPATH}/tools/extract_device.pl"
-TOOL_LOGGING="${SCRIPTPATH}/tools/livelogging.pl"
-TOOL_PREPROCESS="${SCRIPTPATH}/tools/preprocessor.pl"
-TOOL_PATHS="${SCRIPTPATH}/tools/json_paths.pl"
-
 function log_warn() {
+	if [ ${QUIET} -ne 0 ]; then return ; fi
 	echo -n "WARN: "
 	echo $@
 }
 
 function log_err() {
+	# Always print errors
 	echo -n "ERROR: "
 	echo $@
 }
 
 function log_info() {
+	if [ ${QUIET} -ne 0 ]; then return ; fi
 	echo -n "INFO: "
+	echo $@
+}
+
+function log() {
+	if [ ${QUIET} -ne 0 ]; then return ; fi
 	echo $@
 }
 
@@ -81,11 +43,11 @@ function webide_login() {
 	if [ ! -f /tmp/login_ok ]; then
 		curl -A "${USERAGENT}" -D "${HEADERS}" -c "${COOKIES}" -X POST -d "j_username=${USERNAME}&j_password=${PASSWORD}" ${LOGIN_URL}
 		if grep "${LOGIN_FAIL}" "${HEADERS}" ; then
-			echo "ERROR: Login failed, check username/password"
+			log_err "Login failed, check username/password"
 			exit 255
 		fi
 		if [ $QUIET -eq 0 ]; then
-			echo "Login successful and cached"
+			log_info "Login successful and cached"
 		fi
 		touch /tmp/login_ok
 	fi
@@ -176,22 +138,23 @@ function rawurlencode() {
 function usage() {
 	echo ""
 	echo "SmartThings WebIDE Sync (beta) - henric@smartthings.com"
-	echo "======================================================="
+	echo "¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨"
 	echo "Simplifying the use of an external editor with the SmartThings development"
 	echo "environment."
 	echo ""
+	echo "  -d        = DISABLE preprocessor directives (see README.md)"
+	echo "  -f <file> = Make -u & -p apply to <file> ONLY"
+	echo "  -F        = Force action, regardless of change"
+	echo "  -h        = This help"
+	echo "  -l        = Always login"
+	echo "  -L        = Live Logging (experimental)"
+	echo "  -o        = Allow overwrite of include files (normally only new files are created)"
+	echo "  -P <file> = Load a different profile other than ~/.stsync"
+	echo "  -p        = Publish changes (can be combined with -u)"
+	echo "  -q        = Quiet (less output)"
 	echo "  -s        = Start a new repository (essentially downloading your ST apps and device types)"
 	echo "  -S        = Same as -s but WILL overwrite any existing files. Use with care, you'll lose any local changes you've made"
 	echo "  -u        = Upload changes"
-	echo "  -p        = Publish changes (can be combined with -u)"
-	echo "  -f <file> = Make -u & -p apply to <file> ONLY"
-	echo "  -h        = This help"
-	echo "  -q        = Quiet (less output)"
-	echo "  -l        = Always login"
-	echo "  -L        = Live Logging (experimental)"
-	echo "  -d        = DISABLE preprocessor directives (see README.md)"
-	echo "  -o        = Allow overwrite of include files (normally only new files are created)"
-	echo "  -F        = Force action, regardless of change"
 	#echo "  -j        = Journaling mode (see README.md)"
 	#echo "  -a <file> = Add file to repository"
 	echo ""
@@ -402,39 +365,96 @@ TIMESTAMP=0
 INCLUDES=1
 INCLUDE_OVERWRITE=0
 FORCE_ACTION=0
+PROFILE="~/.stsync"
+PROFILECHG=0
 
 # Parse options
 #
-while getopts FtsSdhpulqLof: opt
+while getopts FtsSdhpulqLof:P: opt
 do
    	case "$opt" in
-   		t) TIMESTAMP=1;;
-	   	s) MODE=sync;;
-		S) MODE=sync ; FORCE=1;;
-		p) PUBLISH=1;;
-		u) UPLOAD=1;;
-		f) SELECTED="$OPTARG";;
-		q) QUIET=1;;
-		l) rm /tmp/login_ok 2>/dev/null 1>/dev/null ;;
-		L) MODE=logging;;
 		d) INCLUDES=0;;
-		o) INCLUDE_OVERWRITE=0;;
+		f) SELECTED=$OPTARG;;
 		F) FORCE_ACTION=1;;
 		h) usage;;
+		l) rm /tmp/login_ok 2>/dev/null 1>/dev/null ;;
+		L) MODE=logging;;
+		o) INCLUDE_OVERWRITE=0;;
+   		P) PROFILE=$OPTARG;PROFILECHG=1;;
+		p) PUBLISH=1;;
+		q) QUIET=1;;
+	   	s) MODE=sync;;
+		S) MODE=sync ; FORCE=1;;
+   		t) TIMESTAMP=1;;
+		u) UPLOAD=1;;
 	esac
 done
 
-if [ $QUIET -eq 0 ]; then
-	echo ""
-	echo "SmartThings WebIDE Sync (beta)"
-	echo "=============================="
-	echo ""
-
-	if [ "${SERVER}" != "graph.api.smartthings.com" ]; then
-		log_info "Note! Using ${SERVER} instead of regular end-point"
-		echo ""
+# Load user settings and allow override of the above values
+#
+eval pushd "$(dirname "${PROFILE}")" > /dev/null
+PROFILE="$(pwd)/$(basename "${PROFILE}")"
+popd > /dev/null
+if [ -f "${PROFILE}" ]; then
+	if [ ${PROFILECHG} -gt 0 ]; then
+		log_info "Using ${PROFILE} instead of ~/.stsync"
 	fi
+	source "${PROFILE}"
+else
+	log_err "${PROFILE} does not exist"
+	exit 1
+fi
 
+# Get the path of ourselves (need for symlinks)
+#
+eval pushd "$(dirname "$0")" > /dev/null
+SCRIPTPATH="$(pwd)"
+popd > /dev/null
+
+USERAGENT="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/43.0.2357.134 Safari/537.36"
+HEADERS=/tmp/headers.txt
+COOKIES=/tmp/cookies.txt
+
+LOGIN_URL="https://${SERVER}/j_spring_security_check"
+LOGIN_FAIL="https://${SERVER}/login/authfail?"
+LOGIN_NEEDED="https://${SERVER}/login/auth"
+
+SMARTAPPS_URL="https://${SERVER}/ide/apps"
+DEVICETYPES_URL="https://${SERVER}/ide/devices"
+SMARTAPPS_LINK="/ide/app/editor/[^\"]+"
+DEVICETYPES_LINK="/ide/device/editor/[^\"]+"
+
+SMARTAPPS_TRANSLATE="https://${SERVER}/ide/app/getResourceList?id="
+SMARTAPPS_EXTRACT_IDFILE="(id\":\"[^\"]+)\",\"text\":\"[^\"]+"
+SMARTAPPS_EXTRACT_ID="(id\":\"[^\"]+)"
+SMARTAPPS_EXTRACT_FILE="(text\":\"[^\"]+)"
+SMARTAPPS_DOWNLOAD="https://${SERVER}/ide/app/getCodeForResource"
+
+SMARTAPPS_COMPILE="https://${SERVER}/ide/app/compile"
+SMARTAPPS_PUBLISH="https://${SERVER}/ide/app/publishAjax"
+
+SMARTAPP_CDN="https://${SERVER}/ide/app/cdnImageURL"
+
+LOGGING_URL="https://${SERVER}/ide/logs"
+
+TOOL_JSONDEC="${SCRIPTPATH}/tools/json_decode.pl"
+TOOL_JSONENC="${SCRIPTPATH}/tools/json_encode.pl"
+TOOL_URLENC="${SCRIPTPATH}/tools/url_encode.pl"
+TOOL_EXTRACT="${SCRIPTPATH}/tools/extract_device.pl"
+TOOL_LOGGING="${SCRIPTPATH}/tools/livelogging.pl"
+TOOL_PREPROCESS="${SCRIPTPATH}/tools/preprocessor.pl"
+TOOL_PATHS="${SCRIPTPATH}/tools/json_paths.pl"
+
+
+
+log ""
+log "SmartThings WebIDE Sync (beta)"
+log "¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨"
+log ""
+
+if [ "${SERVER}" != "graph.api.smartthings.com" ]; then
+	log_info "Note! Using ${SERVER} instead of regular end-point"
+	log ""
 fi
 
 eval CLEAN_SOURCE="${SOURCE}"
@@ -473,30 +493,30 @@ popd > /dev/null
 webide_login
 
 if [ "${MODE}" == "sync" ]; then
-	echo "Downloading repository to ${CLEAN_SOURCE}:"
+	log "Downloading repository to ${CLEAN_SOURCE}:"
 	mkdir -p "${CLEAN_SOURCE}/app"
 	mkdir -p "${CLEAN_SOURCE}/device"
 	mkdir -p "${RAW_SOURCE}/app"
 	mkdir -p "${RAW_SOURCE}/device"
-	echo "(this initial download will sometimes take up to a minute or two)"
+	log "(this initial download will sometimes take up to a minute or two)"
 	webide_execWithLogin curl -s -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" -o "${RAW_SOURCE}/app/smartapps.lst" "${SMARTAPPS_URL}"
 	webide_execWithLogin curl -s -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" -o "${RAW_SOURCE}/device/devicetypes.lst" "${DEVICETYPES_URL}"
-	echo ""
+	log ""
 	# Get the APP ids
 	IDS="$(egrep -o "${SMARTAPPS_LINK}" "${RAW_SOURCE}/app/smartapps.lst")"
-	echo "Downloading SmartApps:"
+	log "Downloading SmartApps:"
 	download_repo "app" "${IDS}"
 	IDS="$(egrep -o "${DEVICETYPES_LINK}" "${RAW_SOURCE}/device/devicetypes.lst")"
-	echo ""
-	echo "Downloading Device Types:"
+	log ""
+	log "Downloading Device Types:"
 	download_repo "device" "${IDS}"
 	if [ ! -f "${CLEAN_SOURCE}/.gitignore" ]; then
 		# Create a gitignore in-case the user will use git
 		echo >"${CLEAN_SOURCE}/.gitignore" ".raw/"
 	fi
-	echo ""
-	echo "Finished! Your projects can be found at ${CLEAN_SOURCE}"
-	echo ""
+	log ""
+	log "Finished! Your projects can be found at ${CLEAN_SOURCE}"
+	log ""
 fi
 
 if [ "${MODE}" == "diff" ]; then
@@ -507,11 +527,11 @@ if [ "${MODE}" == "diff" ]; then
 
 	if [ $QUIET -eq 0 ]; then
 		if [ "${SELECTED}" != "" ]; then
-			echo "Checking ${CLEAN_SOURCE} for any changes to ${SELECTED}:"
+			log "Checking ${CLEAN_SOURCE} for any changes to ${SELECTED}:"
 		else
-			echo "Checking ${CLEAN_SOURCE} for any changes:"
+			log "Checking ${CLEAN_SOURCE} for any changes:"
 		fi
-		echo ""
+		log ""
 	fi
 	I=0
 	C=0
@@ -523,14 +543,13 @@ if [ "${MODE}" == "diff" ]; then
 		if [ $U -lt 0 ]; then U=0 ; fi
 		if [ $C -lt 0 ]; then C=0 ; fi
 
-		echo ""
-		echo "Checked ${I} files, ${U} unpublished, ${C} changed locally"
+		log ""
+		log "Checked ${I} files, ${U} unpublished, ${C} changed locally"
 	fi
 fi
 
 if [ "${MODE}" == "logging" ]; then
-	curl -s -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" -o "/tmp/get_data" ${LOGGING_URL}
-	checkAuthError
+	webide_execWithLogin curl -s -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" -o "/tmp/get_data" ${LOGGING_URL}
 	WEBSOCKET="$(egrep -o "websocket: \'[^\']+" /tmp/get_data)"
 	WEBSOCKET="${WEBSOCKET##websocket: \'}"
 	CLIENT="$(egrep -o "client: \'[^\']+" /tmp/get_data)"
