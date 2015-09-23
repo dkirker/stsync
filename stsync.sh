@@ -46,7 +46,7 @@ function webide_login() {
 			log_err "Login failed, check username/password"
 			exit 255
 		fi
-		if [ $QUIET -eq 0 ]; then
+		if [ $QUIET -eq 0 -a "$1" != "silent" ]; then
 			log_info "Login successful and cached"
 		fi
 		touch /tmp/login_ok
@@ -147,7 +147,7 @@ function usage() {
 	echo "  -F        = Force action, regardless of change"
 	echo "  -h        = This help"
 	echo "  -l        = Always login"
-	echo "  -L        = Live Logging (experimental)"
+	echo "  -L [file] = Live Logging (experimental), if file is provided, a log is saved to that file"
 	echo "  -o        = Allow overwrite of include files (normally only new files are created)"
 	echo "  -P <file> = Load a different profile other than ~/.stsync"
 	echo "  -p        = Publish changes (can be combined with -u)"
@@ -239,6 +239,7 @@ function download_repo() {
 			SA_FILE="${SA_FILE// /-}.groovy"
 			SA_FILE="${SA_FILE//\(/-}"
 			SA_FILE="${SA_FILE//\)/-}"
+			SA_FILE="${SA_FILE//\//-}"
 			SA_FILE="$(echo "${SA_FILE}" | tr '[:upper:]' '[:lower:]')"
 			SA_ID="$(egrep -o '("[^"]+" id="id")' "${RAW_SOURCE}/${TYPE}/${FILE}_translate.html")"
 			SA_ID="${SA_ID##\"}"
@@ -317,8 +318,8 @@ function checkDiff() {
 					echo -e "ERROR!\n"
 					echo -n "$(basename "${INFO[2]}"):"
 					# Do not change the following 3 lines, they have to be this way to get \n into the feed.
-					cat /tmp/post_result | ${TOOL_JSONDEC} errors | sed -E 's/script[0-9]+\.{0,1}//g' | sed -nE 's/(.*) @ line ([0-9]+)$/\2: \1/p' | sed -E 's/: /:\
-    /g'
+					cat /tmp/post_result | ${TOOL_JSONDEC} errors #| sed -E 's/script[0-9]+\.{0,1}//g' | sed -nE 's/(.*) @ line ([0-9]+)$/\2: \1/p' | sed -E 's/: /:\
+#    /g'
 					echo ""
 					echo '>>>Did not upload or publish the file<<<'
 					echo ""
@@ -367,10 +368,11 @@ INCLUDE_OVERWRITE=0
 FORCE_ACTION=0
 PROFILE="~/.stsync"
 PROFILECHG=0
+LOGFILE=
 
 # Parse options
 #
-while getopts FtsSdhpulqLof:P: opt
+while getopts :FtsSdhpulqL:of:P: opt
 do
    	case "$opt" in
 		d) INCLUDES=0;;
@@ -378,7 +380,7 @@ do
 		F) FORCE_ACTION=1;;
 		h) usage;;
 		l) rm /tmp/login_ok 2>/dev/null 1>/dev/null ;;
-		L) MODE=logging;;
+		L) MODE=logging; LOGFILE=$OPTARG;;
 		o) INCLUDE_OVERWRITE=0;;
    		P) PROFILE=$OPTARG;PROFILECHG=1;;
 		p) PUBLISH=1;;
@@ -387,7 +389,13 @@ do
 		S) MODE=sync ; FORCE=1;;
    		t) TIMESTAMP=1;;
 		u) UPLOAD=1;;
+		# Options with optional arguments end up here when no argument is provided
+		:)	case "$OPTARG" in
+				L) MODE=logging;;
+			esac
+			;;
 	esac
+
 done
 
 # Load user settings and allow override of the above values
@@ -395,7 +403,16 @@ done
 eval pushd "$(dirname "${PROFILE}")" > /dev/null
 PROFILE="$(pwd)/$(basename "${PROFILE}")"
 popd > /dev/null
-if [ -f "${PROFILE}" ]; then
+eval pushd "$(dirname "~")" > /dev/null
+DEFPROFILE="$(pwd)/.stsync"
+popd > /dev/null
+if [ -f "${DEFPROFILE}-$(basename ${PROFILE})" ]; then
+	PROFILE="${DEFPROFILE}-$(basename ${PROFILE})"
+	if [ ${PROFILECHG} -gt 0 ]; then
+		log_info "Using ${PROFILE} instead of ~/.stsync"
+	fi
+	source "${PROFILE}"
+elif [ -f "${PROFILE}" ]; then
 	if [ ${PROFILECHG} -gt 0 ]; then
 		log_info "Using ${PROFILE} instead of ~/.stsync"
 	fi
@@ -450,7 +467,6 @@ TOOL_PATHS="${SCRIPTPATH}/tools/json_paths.pl"
 log ""
 log "SmartThings WebIDE Sync (beta)"
 log "¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨"
-log ""
 
 if [ "${SERVER}" != "graph.api.smartthings.com" ]; then
 	log_info "Note! Using ${SERVER} instead of regular end-point"
@@ -549,11 +565,14 @@ if [ "${MODE}" == "diff" ]; then
 fi
 
 if [ "${MODE}" == "logging" ]; then
+	# Always force a login, seems to solve reliability issue
+	rm /tmp/login_ok 2>/dev/null 1>/dev/null
+	webide_login "silent"
 	webide_execWithLogin curl -s -A "${USERAGENT}" -D "${HEADERS}" -b "${COOKIES}" -o "/tmp/get_data" ${LOGGING_URL}
 	WEBSOCKET="$(egrep -o "websocket: \'[^\']+" /tmp/get_data)"
 	WEBSOCKET="${WEBSOCKET##websocket: \'}"
 	CLIENT="$(egrep -o "client: \'[^\']+" /tmp/get_data)"
 	CLIENT="${CLIENT##client: \'}"
 
-	${TOOL_LOGGING} "${WEBSOCKET}client/${CLIENT}" "${CLIENT}"
+	${TOOL_LOGGING} "${WEBSOCKET}client/${CLIENT}" "${CLIENT}" "${LOGFILE}"
 fi
