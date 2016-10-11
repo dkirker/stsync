@@ -107,18 +107,18 @@ $ws->on(each_message => sub {
 
 my $timer = AnyEvent->timer(after => 3, interval => 3, cb => sub {
 	#printf "----- | ALIVE | %-25.25s | ----- |\n", "KeepAlive Ping >";
-	if ($progress % 10 == 0) {
-		if ($pending) {
-			printf "----- | DEAD! | %-25.25s | ----- | Server has stopped responding to keep alive requests @ %s\n", "KeepAlive", (strftime "%a %b %e, %H:%M:%S %Y", localtime);
-			if (defined $logging) {
-				printf $logging "----- | DEAD! | %-25.25s | ----- | Server has stopped responding to keep alive requests @ %s\n", "KeepAlive", (strftime "%a %b %e, %H:%M:%S %Y", localtime);
-				$logging->flush();
-			}
-			exit 15;
-		}
-		$pending = 1;
-		$ws->send('ping');
-	}
+#	if ($progress % 10 == 0) {
+#		if ($pending) {
+#			printf "----- | DEAD! | %-25.25s | ----- | Server has stopped responding to keep alive requests @ %s\n", "KeepAlive", (strftime "%a %b %e, %H:%M:%S %Y", localtime);
+#			if (defined $logging) {
+#				printf $logging "----- | DEAD! | %-25.25s | ----- | Server has stopped responding to keep alive requests @ %s\n", "KeepAlive", (strftime "%a %b %e, %H:%M:%S %Y", localtime);
+#				$logging->flush();
+#			}
+#			exit 15;
+#		}
+#		$pending = 1;
+#		$ws->send('ping');
+#	}
 	printProgress();
 	$progress = $progress + 1;
 });
