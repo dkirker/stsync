@@ -43,7 +43,7 @@ $ws->on(each_message => sub {
 		}
 		$lasttime = $timestamp = time();
 	} elsif ($msg eq "echo") {
-		#printf "----- | ALIVE | %-25.25s | ----- |\n", "KeepAlive < Pong";
+		#printf "----- | ALIVE | %-75.75s | ------------- | ----- |\n", "KeepAlive < Pong";
 		$pending = 0;
 	} elsif (substr($msg, 0, 1) eq "{") {
 		my $t = time();
@@ -54,44 +54,52 @@ $ws->on(each_message => sub {
 		my $data = decode_json($msg);
 		my $targetlabel = "";
 		if ($data->{'logs'}) {
-			my $prefix = sprintf "%5d | ", $offset;
+			my $prefix = sprintf "%13d |", $offset;
+			my $targetPrefix = "";
 			if ($data->{'target'}) {
 				if ($data->{'target'}->{'type'} eq 'InstalledSmartApp') {
-					$prefix .= "  APP | ";
+					$targetPrefix .= "APP";
 				} elsif ($data->{'target'}->{'type'} eq 'Device') {
-					$prefix .= "  DEV | ";
+					$targetPrefix .= "DEV";
 				} else {
-					$prefix .= $data->{'target'}->{'type'};
+					$targetPrefix .= $data->{'target'}->{'type'};
 				}
 				$targetlabel = $data->{'target'}->{'label'};
 			} elsif ($data->{'targets'}) {
 				my $targets = $data->{'targets'};
 				foreach (@$targets) {
 					if ($_->{'type'} eq 'InstalledSmartApp') {
-						$prefix .= "APP";
+						$targetPrefix .= "APP";
 					} elsif ($_->{'type'} eq 'Device') {
-						$prefix .= "DEV";
+						$targetPrefix .= "DEV";
 					} else {
-						$prefix .= $_->{'type'};
+						$targetPrefix .= $_->{'type'};
 					}
 					$targetlabel .= $_->{'label'};
 					if (ref($_) and ref(@$targets[-1]) and refaddr($_) != refaddr(@$targets[-1])) {
 						$targetlabel .= ", ";
-						$prefix .= ", ";
+						$targetPrefix .= ", ";
 					} else {
-						$prefix .= " ";
+						$targetPrefix .= " ";
 					}
 				}
-				$prefix .= "| ";
 			} else {
-				$prefix .= "  XXX | ";
+				$targetPrefix .= "UNKNOWN";
 			}
+			# Honestly, targetPrefix has the chance of being REALLY LONG for automations or services with many devices.... so.... *shrug*
+			$prefix .= sprintf " %-10.10s | ", $targetPrefix;
 			$prefix .= sprintf "%-75.75s", $targetlabel;
 			printLogArray( $prefix, $data->{'logs'});
 		} elsif ( $data->{'event'} ) {
-			printf "%5d | EVENT | Source: %-17.17s | ----- | %s\n", $offset, $data->{'event'}->{"eventSource"}, $data->{'event'}->{"value"};
+			my $evtUnixTime = $data->{'event'}->{'unixTime'};
+			my $evtEventSource = $data->{'event'}->{'eventSource'};
+			my $evtName = $data->{'event'}->{'name'} ? $data->{'event'}->{'name'} : "";
+			my $evtValue = $data->{'event'}->{'value'} ? $data->{'event'}->{'value'} : "";
+			my $evtDescription = $data->{'event'}->{'description'} ? $data->{'event'}->{'description'} : "";
+
+			printf "%13d | EVENT      | Source: %-67.67s | %13d | ----- | %s (%s: %s)\n", $offset, $evtEventSource, $evtUnixTime, $evtDescription, $evtName, $evtValue;
 			if (defined $logging) {
-				printf $logging "%5d | EVENT | Source: %-17.17s | ----- | %s\n", $offset, $data->{'event'}->{"eventSource"}, $data->{'event'}->{"value"};
+				printf $logging "%13d | EVENT      | Source: %-67.67s | %13d | ----- | %s (%s: %s)\n", $offset, $evtEventSource, $evtUnixTime, $evtDescription, $evtName, $evtValue;
 				$logging->flush();
 			}
 		} else {
@@ -106,12 +114,12 @@ $ws->on(each_message => sub {
 });
 
 my $timer = AnyEvent->timer(after => 3, interval => 3, cb => sub {
-	#printf "----- | ALIVE | %-25.25s | ----- |\n", "KeepAlive Ping >";
+	#printf "----- | ALIVE      | %-75.75s | ------------- | ----- |\n", "KeepAlive Ping >";
 #	if ($progress % 10 == 0) {
 #		if ($pending) {
-#			printf "----- | DEAD! | %-25.25s | ----- | Server has stopped responding to keep alive requests @ %s\n", "KeepAlive", (strftime "%a %b %e, %H:%M:%S %Y", localtime);
+#			printf "----- | DEAD!      | %-75.75s | ------------- | ----- | Server has stopped responding to keep alive requests @ %s\n", "KeepAlive", (strftime "%a %b %e, %H:%M:%S %Y", localtime);
 #			if (defined $logging) {
-#				printf $logging "----- | DEAD! | %-25.25s | ----- | Server has stopped responding to keep alive requests @ %s\n", "KeepAlive", (strftime "%a %b %e, %H:%M:%S %Y", localtime);
+#				printf $logging "----- | DEAD!      | %-75.75s | ------------- | ----- | Server has stopped responding to keep alive requests @ %s\n", "KeepAlive", (strftime "%a %b %e, %H:%M:%S %Y", localtime);
 #				$logging->flush();
 #			}
 #			exit 15;
@@ -133,9 +141,9 @@ sub printLogArray {
 	my ($prefix, $data) = @_;
 	foreach ( @$data ) {
 		my $line = $_;
-		printf "%s | %-5.5s | %s\n", $prefix, $line->{'level'}, $line->{'msg'};
+		printf "%s | %13d | %-5.5s | %s\n", $prefix, $line->{'time'}, $line->{'level'}, $line->{'msg'};
 		if (defined $logging) {
-			printf $logging "%s | %-5.5s | %s\n", $prefix, $line->{'level'}, $line->{'msg'};
+			printf $logging "%s | %13d | %-5.5s | %s\n", $prefix, $line->{'time'}, $line->{'level'}, $line->{'msg'};
 			$logging->flush();
 		}
 	}
