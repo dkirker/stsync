@@ -5,6 +5,7 @@ use warnings;
 use JSON;
 use AnyEvent::WebSocket::Client;
 use POSIX qw(strftime);
+use Scalar::Util 'refaddr';
 
 if ($#ARGV < 1) {
 	die("Cannot be used stand-alone $#ARGV");
@@ -51,16 +52,41 @@ $ws->on(each_message => sub {
 		$lasttime = $t;
 
 		my $data = decode_json($msg);
+		my $targetlabel = "";
 		if ($data->{'logs'}) {
 			my $prefix = sprintf "%5d | ", $offset;
-			if ($data->{'target'}->{'type'} eq 'InstalledSmartApp') {
-				$prefix .= "  APP | ";
-			} elsif ($data->{'target'}->{'type'} eq 'Device') {
-				$prefix .= "  DEV | ";
+			if ($data->{'target'}) {
+				if ($data->{'target'}->{'type'} eq 'InstalledSmartApp') {
+					$prefix .= "  APP | ";
+				} elsif ($data->{'target'}->{'type'} eq 'Device') {
+					$prefix .= "  DEV | ";
+				} else {
+					$prefix .= $data->{'target'}->{'type'};
+				}
+				$targetlabel = $data->{'target'}->{'label'};
+			} elsif ($data->{'targets'}) {
+				my $targets = $data->{'targets'};
+				foreach (@$targets) {
+					if ($_->{'type'} eq 'InstalledSmartApp') {
+						$prefix .= "APP";
+					} elsif ($_->{'type'} eq 'Device') {
+						$prefix .= "DEV";
+					} else {
+						$prefix .= $_->{'type'};
+					}
+					$targetlabel .= $_->{'label'};
+					if (ref($_) and ref(@$targets[-1]) and refaddr($_) != refaddr(@$targets[-1])) {
+						$targetlabel .= ", ";
+						$prefix .= ", ";
+					} else {
+						$prefix .= " ";
+					}
+				}
+				$prefix .= "| ";
 			} else {
-				$prefix .= $data->{'target'}->{'type'};
+				$prefix .= "  XXX | ";
 			}
-			$prefix .= sprintf "%-25.25s", $data->{'target'}->{'label'};
+			$prefix .= sprintf "%-75.75s", $targetlabel;
 			printLogArray( $prefix, $data->{'logs'});
 		} elsif ( $data->{'event'} ) {
 			printf "%5d | EVENT | Source: %-17.17s | ----- | %s\n", $offset, $data->{'event'}->{"eventSource"}, $data->{'event'}->{"value"};
